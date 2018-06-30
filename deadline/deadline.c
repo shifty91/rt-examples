@@ -87,7 +87,7 @@ static void *deadline_thread(void *arg)
         return NULL;
     }
 
-    /* 500us runtime very 1ms */
+    /* 500us runtime every 1ms */
     attr.sched_policy  = SCHED_DEADLINE;
     attr.sched_runtime = 500 * 1000;
     attr.sched_period  = attr.sched_deadline = 1 * 1000 * 1000;
