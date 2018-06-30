@@ -160,10 +160,10 @@ int main(int argc, char *argv[])
     if (ret)
         pthread_err(ret, "pthread_attr_setinheritsched() failed");
 
-    /* Setup cond_signals */
+    /* Setup signals */
     setup_signals();
 
-    /* Setup cond_signalling mechanism */
+    /* Setup signalling mechanism */
     ret = pthread_mutex_init(&lock, NULL);
     if (ret)
         pthread_err(ret, "pthread_mutex_init() failed");
