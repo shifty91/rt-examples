@@ -62,7 +62,7 @@ static void *cyclic_thread(void *data)
 
     while (!stop) {
         struct timespec current;
-        int ret, i = 0;
+        int ret;
         long long diff;
 
         /* Sleep until next period */
