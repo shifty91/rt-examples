@@ -31,6 +31,11 @@ infrastructure can be utilized.
 
 ![Deadline Trace](deadline.png)
 
+### Signal ###
+
+Signal measures the latency between a cyclic task wants to wake up and is
+actually woken up. It signals the maximum latency to a printing thread using
+pthread condition variables.
 
 ## Dependencies ##
 
