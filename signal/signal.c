@@ -35,34 +35,6 @@ static void setup_signals(void)
         err_errno("sigaction() failed");
 }
 
-static void increment_period(struct timespec *time)
-{
-    time->tv_nsec += period_ns;
-
-    while (time->tv_nsec >= 1000000000) {
-        /* timespec nsec overflow */
-        time->tv_sec++;
-        time->tv_nsec -= 1000000000;
-    }
-}
-
-static long long calculate_diff(const struct timespec *current,
-                                const struct timespec *expected)
-{
-    struct timespec diff;
-
-    /* deal with overflow */
-    if (current->tv_nsec - expected->tv_nsec < 0) {
-        diff.tv_sec  = current->tv_sec  - expected->tv_sec - 1;
-        diff.tv_nsec = current->tv_nsec - expected->tv_nsec + 1000000000;
-    } else {
-        diff.tv_sec  = current->tv_sec  - expected->tv_sec;
-        diff.tv_nsec = current->tv_nsec - expected->tv_nsec;
-    }
-
-    return diff.tv_sec * 1000000000 + diff.tv_nsec;
-}
-
 static void *printer_thread(void *data)
 {
     while (!stop) {
@@ -94,7 +66,7 @@ static void *cyclic_thread(void *data)
         long long diff;
 
         /* Sleep until next period */
-        increment_period(&time);
+        increment_period(&time, period_ns);
         do {
             ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &time, NULL);
         } while (ret == EINTR && !stop);

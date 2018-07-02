@@ -32,17 +32,6 @@ static void setup_signals(void)
         err_errno("sigaction() failed");
 }
 
-static void increment_period(struct timespec *time)
-{
-    time->tv_nsec += period_ns;
-
-    while (time->tv_nsec >= 1000000000) {
-        /* timespec nsec overflow */
-        time->tv_sec++;
-        time->tv_nsec -= 1000000000;
-    }
-}
-
 static void *cyclic_thread(void *data)
 {
     struct timespec time;
@@ -63,7 +52,7 @@ static void *cyclic_thread(void *data)
         }
 
         /* Sleep until next period */
-        increment_period(&time);
+        increment_period(&time, period_ns);
         do {
             ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &time, NULL);
         } while (ret == EINTR && !stop);

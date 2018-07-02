@@ -31,3 +31,31 @@ void _log(const char * restrict level, int die, int with_errno,
     if (die)
         exit(EXIT_FAILURE);
 }
+
+void increment_period(struct timespec *time, long period_ns)
+{
+    time->tv_nsec += period_ns;
+
+    while (time->tv_nsec >= 1000000000) {
+        /* timespec nsec overflow */
+        time->tv_sec++;
+        time->tv_nsec -= 1000000000;
+    }
+}
+
+long long calculate_diff(const struct timespec *current,
+                         const struct timespec *expected)
+{
+    struct timespec diff;
+
+    /* deal with overflow */
+    if (current->tv_nsec - expected->tv_nsec < 0) {
+        diff.tv_sec  = current->tv_sec  - expected->tv_sec - 1;
+        diff.tv_nsec = current->tv_nsec - expected->tv_nsec + 1000000000;
+    } else {
+        diff.tv_sec  = current->tv_sec  - expected->tv_sec;
+        diff.tv_nsec = current->tv_nsec - expected->tv_nsec;
+    }
+
+    return diff.tv_sec * 1000000000 + diff.tv_nsec;
+}
