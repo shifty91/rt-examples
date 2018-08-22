@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.2)
 project(rt-examples)
 
-set(CMAKE_CC_FLAGS "${CMAKE_CC_FLAGS} -pedantic -Wall -march=native")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pedantic -Wall -march=native")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
