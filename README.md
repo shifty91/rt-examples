@@ -2,8 +2,8 @@
 
 ## About ##
 
-These two example programs show howto implement cyclic user space realtime
-applications with Linux.
+These example programs show howto implement user space realtime applications
+with Linux.
 
 ## Build ##
 
@@ -37,9 +37,25 @@ Signal measures the latency between a cyclic task wants to wake up and is
 actually woken up. It signals the maximum latency to a printing thread using
 pthread condition variables.
 
+### LTTng ###
+
+This example demonstrates howto utilize LTTng for user space tracing. Take
+trace:
+
+    $ ./cyclic_lttng &
+    $ lttng-sessiond --daemonize
+    $ lttng create my-session
+    $ lttng enable-event --userspace cyclic:cyclic_tp
+    $ lttng start
+    $ sleep 5
+    $ lttng stop
+    $ lttng destroy
+    $ babeltrace ~/lttng-traces/my-session-*
+
 ## Dependencies ##
 
 - Linux version >= 3.14 for deadline scheduling
+- LTTng: optional
 
 ## Author ##
 

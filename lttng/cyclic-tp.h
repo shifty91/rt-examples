@@ -13,10 +13,12 @@ TRACEPOINT_EVENT(
     cyclic,
     cyclic_tp,
     TP_ARGS(
-        char *, string_arg
+        char *, string_arg,
+        int, int_arg
     ),
     TP_FIELDS(
         ctf_string(string_field, string_arg)
+        ctf_integer(int, int_field, int_arg)
         )
     )
 

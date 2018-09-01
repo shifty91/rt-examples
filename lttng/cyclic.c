@@ -44,15 +44,16 @@ static void *cyclic_thread(void *data)
     }
 
     while (!stop) {
-        int ret, i = 0;
+        volatile int i = 0;
+        int ret;
 
-        tracepoint(cyclic, cyclic_tp, "Before work!");
+        tracepoint(cyclic, cyclic_tp, "Before work!", i);
         /* Do some work */
         while (1) {
             if (++i == 50000)
                 break;
         }
-        tracepoint(cyclic, cyclic_tp, "After work!");
+        tracepoint(cyclic, cyclic_tp, "After work!", i);
 
         /* Sleep until next period */
         increment_period(&time, period_ns);
