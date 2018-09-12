@@ -52,10 +52,21 @@ trace:
     $ lttng destroy
     $ babeltrace ~/lttng-traces/my-session-*
 
+### USDT ###
+
+This example shows howto utilize BPF in order to trace user static defined
+trace probes:
+
+    $ ./cyclic_usdt &
+    $ ./trace.py <pid_of_cyclic_usdt>
+
 ## Dependencies ##
 
 - Linux version >= 3.14 for deadline scheduling
+- Linux version >= 4.7 for tracepoint probes
 - LTTng: optional
+- BCC: optional
+- Systemtap-sdt: optional
 
 ## Author ##
 

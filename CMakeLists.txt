@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.2)
 project(rt-examples)
 
+include(CheckIncludeFiles)
+
+find_package(PkgConfig REQUIRED)
+
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pedantic -Wall -march=native")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -16,7 +20,6 @@ target_link_libraries(signal Threads::Threads)
 
 option(WITH_LTTNG "Build with LTTNG Examples" ON)
 if (WITH_LTTNG)
-  find_package(PkgConfig REQUIRED)
   pkg_search_module(LTTNG_UST lttng-ust REQUIRED)
   add_executable(cyclic_lttng lttng/cyclic.c lttng/cyclic-tp.c common/utils.c)
   link_directories(${LTTNG_UST_LIBRARY_DIRS})
@@ -24,4 +27,15 @@ if (WITH_LTTNG)
   target_include_directories(cyclic_lttng PRIVATE lttng)
   target_link_libraries(cyclic_lttng ${LTTNG_UST_LIBRARIES})
   target_link_libraries(cyclic_lttng Threads::Threads)
+endif()
+
+option(WITH_USDT "Build with USDT Examples" ON)
+if (WITH_USDT)
+  check_include_files("sys/sdt.h" HAVE_SDT_H)
+  if (NOT HAVE_SDT_H)
+    message(FATAL_ERROR "sys/sdt.h not found. Consider installing systemtap!")
+  endif()
+  add_executable(cyclic_usdt usdt/cyclic.c common/utils.c)
+  target_include_directories(cyclic_usdt PRIVATE)
+  target_link_libraries(cyclic_usdt Threads::Threads)
 endif()
