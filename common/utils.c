@@ -32,6 +32,12 @@ void _log(const char * restrict level, int die, int with_errno,
         exit(EXIT_FAILURE);
 }
 
+void ns_to_ts(long long ns, struct timespec *ts)
+{
+    ts->tv_sec  = ns / 1000000000;
+    ts->tv_nsec = ns % 1000000000;
+}
+
 void increment_period(struct timespec *time, long period_ns)
 {
     time->tv_nsec += period_ns;

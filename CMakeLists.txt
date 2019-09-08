@@ -12,9 +12,13 @@ find_package(Threads REQUIRED)
 
 include_directories("common")
 add_executable(cyclic cyclic/cyclic.c common/utils.c)
+add_executable(etf etf/etf.c common/utils.c)
+add_executable(sub etf/sub.c common/utils.c)
 add_executable(deadline deadline/deadline.c common/utils.c)
 add_executable(signal signal/signal.c common/utils.c)
 target_link_libraries(cyclic Threads::Threads)
+target_link_libraries(etf Threads::Threads)
+target_link_libraries(sub Threads::Threads)
 target_link_libraries(deadline Threads::Threads)
 target_link_libraries(signal Threads::Threads)
 
