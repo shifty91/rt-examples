@@ -42,6 +42,8 @@ void _log(const char * restrict level, int die, int with_errno,
           const char * restrict file, int line, const char * restrict fmt, ...);
 
 /* timing */
+#define NSEC_PER_SEC 1000000000LL
+
 void ns_to_ts(long long ns, struct timespec *ts);
 void increment_period(struct timespec *time, long period_ns);
 long long calculate_diff(const struct timespec *current,

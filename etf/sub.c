@@ -137,7 +137,7 @@ static void *receiver_thread(void *data)
         }
 
         /* Update stats */
-        diff = (ts.tv_sec * 1000000000L + ts.tv_nsec) - tx_time;
+        diff = (ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec) - tx_time;
         current_stats.packets_received++;
         if (diff < current_stats.min)
             current_stats.min = diff;

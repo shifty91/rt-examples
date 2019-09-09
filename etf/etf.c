@@ -256,7 +256,7 @@ static void set_default_parameter(void)
         err_errno("clock_gettime() failed");
 
     ts.tv_sec += 1 * 60;
-    base_time_ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
+    base_time_ns = ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec;
 
     intervall_ns    = 1000000;
     priority        = 99;

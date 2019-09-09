@@ -34,18 +34,18 @@ void _log(const char * restrict level, int die, int with_errno,
 
 void ns_to_ts(long long ns, struct timespec *ts)
 {
-    ts->tv_sec  = ns / 1000000000;
-    ts->tv_nsec = ns % 1000000000;
+    ts->tv_sec  = ns / NSEC_PER_SEC;
+    ts->tv_nsec = ns % NSEC_PER_SEC;
 }
 
 void increment_period(struct timespec *time, long period_ns)
 {
     time->tv_nsec += period_ns;
 
-    while (time->tv_nsec >= 1000000000) {
+    while (time->tv_nsec >= NSEC_PER_SEC) {
         /* timespec nsec overflow */
         time->tv_sec++;
-        time->tv_nsec -= 1000000000;
+        time->tv_nsec -= NSEC_PER_SEC;
     }
 }
 
@@ -57,11 +57,11 @@ long long calculate_diff(const struct timespec *current,
     /* deal with overflow */
     if (current->tv_nsec - expected->tv_nsec < 0) {
         diff.tv_sec  = current->tv_sec  - expected->tv_sec - 1;
-        diff.tv_nsec = current->tv_nsec - expected->tv_nsec + 1000000000;
+        diff.tv_nsec = current->tv_nsec - expected->tv_nsec + NSEC_PER_SEC;
     } else {
         diff.tv_sec  = current->tv_sec  - expected->tv_sec;
         diff.tv_nsec = current->tv_nsec - expected->tv_nsec;
     }
 
-    return diff.tv_sec * 1000000000 + diff.tv_nsec;
+    return diff.tv_sec * NSEC_PER_SEC + diff.tv_nsec;
 }
