@@ -292,7 +292,7 @@ int main(int argc, char *argv[])
     if (ret)
         pthread_err(ret, "pthread_setname_np() failed");
 
-    ret = pthread_setname_np(print_thread, "EtfPrinter");
+    ret = pthread_setname_np(print_thread, "EtfSubPrinter");
     if (ret)
         pthread_err(ret, "pthread_setname_np() failed");
 

@@ -55,6 +55,18 @@ static int udp_socket;
 static struct sockaddr_in udp_sin;
 static struct sock_txtime sk_txtime;
 
+/* statistics */
+struct statistics {
+    long long packets_sent;
+    long long missed_deadline;
+    long long invalid_parameter;
+};
+static struct statistics current_stats = {
+    .packets_sent = 0,
+    .missed_deadline = 0,
+    .invalid_parameter = 0
+};
+
 static int close_udp_socket(void)
 {
     close(udp_socket);
@@ -146,6 +158,8 @@ static int send_udp_packet(long long tx_time_ns)
         return cnt;
     }
 
+    current_stats.packets_sent++;
+
     return 0;
 }
 
@@ -184,14 +198,14 @@ static int process_socket_error_queue(void)
 
         tstamp = ((unsigned long long)serr->ee_data << 32) + serr->ee_info;
 
+        (void)tstamp;
+
         switch (serr->ee_code) {
         case SO_EE_CODE_TXTIME_INVALID_PARAM:
-            log_err("Packet with tstamp %llu dropped due to invalid params",
-                    tstamp);
+            current_stats.invalid_parameter++;
             break;
         case SO_EE_CODE_TXTIME_MISSED:
-            log_err("Packet with tstamp %llu dropped due to missed deadline",
-                    tstamp);
+            current_stats.missed_deadline++;
             break;
         default:
             log_err("Unknown TxTime error");
@@ -203,7 +217,6 @@ static int process_socket_error_queue(void)
 
 static void *cyclic_thread(void *data)
 {
-    struct pollfd p_fd = { .fd = udp_socket, };
     struct timespec wakeup_time;
     long long tx_time = base_time_ns;
 
@@ -231,14 +244,59 @@ static void *cyclic_thread(void *data)
         if (ret)
             return NULL;
 
+        /* Sleep until next period */
+        tx_time += intervall_ns;
+        increment_period(&wakeup_time, intervall_ns);
+    }
+
+    return NULL;
+}
+
+static void *error_thread(void *data)
+{
+    struct pollfd p_fd = { .fd = udp_socket, };
+
+    while (23) {
+        int ret;
+
         /* Check for errors */
         ret = poll(&p_fd, 1, 0);
         if (ret == 1 && p_fd.revents & POLLERR)
             process_socket_error_queue();
+    }
+
+    return NULL;
+}
+
+static void *printer_thread(void *data)
+{
+    struct timespec time;
+
+    /* Get current time */
+    if (clock_gettime(CLOCK_MONOTONIC, &time)) {
+        log_err_errno("clock_gettime() failed");
+        return NULL;
+    }
+
+    while (23) {
+        int ret;
 
         /* Sleep until next period */
-        tx_time += intervall_ns;
-        increment_period(&wakeup_time, intervall_ns);
+        time.tv_sec++;
+        do {
+            ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &time, NULL);
+        } while (ret == EINTR);
+        if (ret && ret != EINTR) {
+            errno = ret;
+            log_err_errno("clock_nanosleep() failed");
+            return NULL;
+        }
+
+        /* Print stats */
+        printf("Packets: %20lld Missed: %20lld Invalid: %20lld\r",
+               current_stats.packets_sent, current_stats.missed_deadline,
+               current_stats.invalid_parameter);
+        fflush(stdout);
     }
 
     return NULL;
@@ -300,7 +358,7 @@ int main(int argc, char *argv[])
 {
     struct sched_param param;
     pthread_attr_t attr;
-    pthread_t thread;
+    pthread_t sender, printer, checker;
     cpu_set_t cpus;
     int ret, c;
 
@@ -381,15 +439,33 @@ int main(int argc, char *argv[])
 
     open_udp_socket();
 
-    ret = pthread_create(&thread, &attr, cyclic_thread, NULL);
+    ret = pthread_create(&sender, &attr, cyclic_thread, NULL);
     if (ret)
         pthread_err(ret, "pthread_create() failed");
 
-    ret = pthread_setname_np(thread, "EtfPublisher");
+    ret = pthread_create(&printer, NULL, printer_thread, NULL);
+    if (ret)
+        pthread_err(ret, "pthread_create() failed");
+
+    ret = pthread_create(&checker, NULL, error_thread, NULL);
+    if (ret)
+        pthread_err(ret, "pthread_create() failed");
+
+    ret = pthread_setname_np(sender, "EtfPublisher");
     if (ret)
         pthread_err(ret, "pthread_setname_np() failed");
 
-    pthread_join(thread, NULL);
+    ret = pthread_setname_np(printer, "EtfPubPrinter");
+    if (ret)
+        pthread_err(ret, "pthread_setname_np() failed");
+
+    ret = pthread_setname_np(checker, "EtfPubChecker");
+    if (ret)
+        pthread_err(ret, "pthread_setname_np() failed");
+
+    pthread_join(sender, NULL);
+    pthread_join(printer, NULL);
+    pthread_join(checker, NULL);
 
     close_udp_socket();
 
