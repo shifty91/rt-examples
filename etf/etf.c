@@ -42,7 +42,6 @@ static struct option long_options[] = {
 /* options */
 static const char *host;
 static const char *port;
-static const char *interface;
 static long long base_time_ns;
 static long long intervall_ns;
 static int priority;
@@ -308,7 +307,6 @@ static void set_default_parameter(void)
 
     host      = "localhost";
     port      = "6666";
-    interface = "eth0";
 
     if (clock_gettime(CLOCK_TAI, &ts))
         err_errno("clock_gettime() failed");
@@ -328,7 +326,6 @@ static void print_parameter(void)
     printf("------------------------------------------\n");
     printf("Host:            %s\n", host);
     printf("Port:            %s\n", port);
-    printf("Interface:       %s\n", interface);
     printf("Base Time:       %lld [ns]\n", base_time_ns);
     printf("Intervall:       %lld [ns]\n", intervall_ns);
     printf("Priority:        %d\n", priority);
@@ -343,7 +340,6 @@ static void print_usage_and_die(void)
     fprintf(stderr, "usage: etf [options]\n");
     fprintf(stderr, "  -H,--host:      Remote host\n");
     fprintf(stderr, "  -P,--port:      Remote port\n");
-    fprintf(stderr, "  -i,--interface: Network interface\n");
     fprintf(stderr, "  -b,--base:      When to start in ns in reference to CLOCK_TAI\n");
     fprintf(stderr, "  -I,--intervall: Period in ns\n");
     fprintf(stderr, "  -p,--priority:  Thread priority\n");
@@ -375,9 +371,6 @@ int main(int argc, char *argv[])
             break;
         case 'P':
             port = optarg;
-            break;
-        case 'i':
-            interface = optarg;
             break;
         case 'b':
             base_time_ns = atoll(optarg);
