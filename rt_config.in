@@ -1,0 +1,6 @@
+#ifndef _RT_CONFIG_H_
+#define _RT_CONFIG_H_
+
+#cmakedefine WITH_XDP @WITH_XDP@
+
+#endif /* _RT_CONFIG_H_ */
