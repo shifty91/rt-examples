@@ -253,13 +253,13 @@ static void *cyclic_thread(void *data)
 
 static void *error_thread(void *data)
 {
-    struct pollfd p_fd = { .fd = udp_socket, };
+    struct pollfd p_fd = { .fd = udp_socket };
 
     while (23) {
         int ret;
 
         /* Check for errors */
-        ret = poll(&p_fd, 1, 0);
+        ret = poll(&p_fd, 1, -1);
         if (ret == 1 && p_fd.revents & POLLERR)
             process_socket_error_queue();
     }
