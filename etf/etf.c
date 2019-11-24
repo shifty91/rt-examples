@@ -27,15 +27,16 @@
 #include "utils.h"
 
 static struct option long_options[] = {
-    { "host",      optional_argument, NULL, 'H' }, /* default: localhost */
-    { "port",      optional_argument, NULL, 'P' }, /* default: 6666 */
-    { "base",      optional_argument, NULL, 'b' }, /* default: now + 1m */
-    { "intervall", optional_argument, NULL, 'I' }, /* default: 1ms */
-    { "priority",  optional_argument, NULL, 'p' }, /* default: 99 */
-    { "socket",    optional_argument, NULL, 's' }, /* default: 1 */
-    { "cpu",       optional_argument, NULL, 'c' }, /* default: cpu 0 */
-    { "wakeup",    optional_argument, NULL, 'w' }, /* default: 200us */
-    { "help",      no_argument,       NULL, 'h' },
+    { "host",        optional_argument, NULL, 'H' }, /* default: localhost */
+    { "port",        optional_argument, NULL, 'P' }, /* default: 6666 */
+    { "base",        optional_argument, NULL, 'b' }, /* default: now + 1m */
+    { "intervall",   optional_argument, NULL, 'I' }, /* default: 1ms */
+    { "priority",    optional_argument, NULL, 'p' }, /* default: 99 */
+    { "socket",      optional_argument, NULL, 's' }, /* default: 3 */
+    { "cpu",         optional_argument, NULL, 'c' }, /* default: cpu 0 */
+    { "wakeup",      optional_argument, NULL, 'w' }, /* default: 500us */
+    { "max_packets", optional_argument, NULL, 'm' }, /* default: 0 */
+    { "help",        no_argument,       NULL, 'h' },
     { NULL },
 };
 
@@ -48,6 +49,10 @@ static int priority;
 static int socket_priority;
 static int cpu;
 static long long wakeup_time_ns;
+static long long max_packets;
+
+/* gobal */
+static volatile int stop;
 
 /* udp */
 static int udp_socket;
@@ -226,7 +231,7 @@ static void *cyclic_thread(void *data)
      */
     ns_to_ts(base_time_ns - wakeup_time_ns, &wakeup_time);
 
-    while (23) {
+    while (!stop) {
         int ret;
 
         do {
@@ -246,6 +251,9 @@ static void *cyclic_thread(void *data)
         /* Sleep until next period */
         tx_time += intervall_ns;
         increment_period(&wakeup_time, intervall_ns);
+
+        if (max_packets && max_packets == current_stats.packets_sent)
+            stop = 1;
     }
 
     return NULL;
@@ -255,7 +263,7 @@ static void *error_thread(void *data)
 {
     struct pollfd p_fd = { .fd = udp_socket };
 
-    while (23) {
+    while (!stop) {
         int ret;
 
         /* Check for errors */
@@ -277,7 +285,7 @@ static void *printer_thread(void *data)
         return NULL;
     }
 
-    while (23) {
+    while (!stop) {
         int ret;
 
         /* Sleep until next period */
@@ -316,9 +324,10 @@ static void set_default_parameter(void)
 
     intervall_ns    = 1000000;
     priority        = 99;
-    socket_priority = 1;
+    socket_priority = 3;
     cpu             = 0;
-    wakeup_time_ns  = 400000;
+    wakeup_time_ns  = 500000;
+    max_packets     = 0;
 }
 
 static void print_parameter(void)
@@ -332,20 +341,22 @@ static void print_parameter(void)
     printf("Socket Priority: %d\n", socket_priority);
     printf("CPU:             %d\n", cpu);
     printf("Wakeup Time:     %lld [ns]\n", wakeup_time_ns);
+    printf("Max. Packets:    %lld\n", max_packets);
     printf("------------------------------------------\n");
 }
 
 static void print_usage_and_die(void)
 {
     fprintf(stderr, "usage: etf [options]\n");
-    fprintf(stderr, "  -H,--host:      Remote host\n");
-    fprintf(stderr, "  -P,--port:      Remote port\n");
-    fprintf(stderr, "  -b,--base:      When to start in ns in reference to CLOCK_TAI\n");
-    fprintf(stderr, "  -I,--intervall: Period in ns\n");
-    fprintf(stderr, "  -p,--priority:  Thread priority\n");
-    fprintf(stderr, "  -s,--socket:    Socket priority\n");
-    fprintf(stderr, "  -c,--cpu:       CPU to run on\n");
-    fprintf(stderr, "  -w,--wakeup:    Time to wakeup before TxTime in ns\n");
+    fprintf(stderr, "  -H,--host:        Remote host\n");
+    fprintf(stderr, "  -P,--port:        Remote port\n");
+    fprintf(stderr, "  -b,--base:        When to start in ns in reference to CLOCK_TAI\n");
+    fprintf(stderr, "  -I,--intervall:   Period in ns\n");
+    fprintf(stderr, "  -p,--priority:    Thread priority\n");
+    fprintf(stderr, "  -s,--socket:      Socket priority\n");
+    fprintf(stderr, "  -c,--cpu:         CPU to run on\n");
+    fprintf(stderr, "  -w,--wakeup:      Time to wakeup before TxTime in ns\n");
+    fprintf(stderr, "  -m,--max_packets: Maximum number of packets to send\n");
 
     exit(EXIT_SUCCESS);
 }
@@ -360,7 +371,7 @@ int main(int argc, char *argv[])
 
     set_default_parameter();
 
-    while ((c = getopt_long(argc, argv, "hH:P:b:I:p:s:c:w:",
+    while ((c = getopt_long(argc, argv, "hH:P:b:I:p:s:c:w:m:",
                             long_options, NULL)) != -1) {
         switch (c) {
         case 'h':
@@ -390,12 +401,16 @@ int main(int argc, char *argv[])
         case 'w':
             wakeup_time_ns = atoll(optarg);
             break;
+        case 'm':
+            max_packets = atoll(optarg);
+            break;
         default:
             print_usage_and_die();
         }
     }
     if (base_time_ns < 0 || intervall_ns < 0 || priority < 0 ||
-        socket_priority < 0 || cpu < 0 || wakeup_time_ns < 0)
+        socket_priority < 0 || cpu < 0 || wakeup_time_ns < 0 ||
+        max_packets < 0)
         print_usage_and_die();
 
     print_parameter();
