@@ -60,17 +60,25 @@ trace probes:
     $ ./cyclic_usdt &
     $ ./trace.py <pid_of_cyclic_usdt>
 
+### ETF ###
+
+This example shows how to implement a Time Sensitive Networking (TSN) talker and
+listener using UDP based communication.
+
 ## Dependencies ##
 
 - Linux version >= 3.14 for deadline scheduling
 - Linux version >= 4.7 for tracepoint probes
+- Recent Linux version for XDP
 - LTTng: optional
 - BCC: optional
 - Systemtap-sdt: optional
+- LLVM/Clang: optional
+- libbpf: optional
 
 ## Author ##
 
-Copyright (C) 2018 Kurt Kanzenbach <kurt@kmk-computers.de>
+Copyright (C) 2018,2019 Kurt Kanzenbach <kurt@kmk-computers.de>
 
 ## License ##
 
