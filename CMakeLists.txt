@@ -34,7 +34,7 @@ if (WITH_XDP)
   pkg_search_module(LIBBPF libbpf REQUIRED)
   link_directories(${LIBBPF_LIBRARY_DIRS})
   target_include_directories(sub PRIVATE ${LIBBPF_INCLUDE_DIRS})
-  target_link_libraries(sub ${LIBBPF_LIBRARIES} elf)
+  target_link_libraries(sub ${LIBBPF_LIBRARIES})
 
   # build bpf program
   add_custom_target(xdp_sub_prog_stage1 ALL
