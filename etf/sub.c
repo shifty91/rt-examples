@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Kurt Kanzenbach <kurt@kmk-computers.de>
+ * Copyright (C) 2019,2020 Kurt Kanzenbach <kurt@kmk-computers.de>
  *
  * XDP code inspired by
  *  - https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/samples/bpf/xdpsock_user.c?h=v5.4-rc8

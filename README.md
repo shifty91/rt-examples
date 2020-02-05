@@ -78,7 +78,7 @@ listener using UDP based communication.
 
 ## Author ##
 
-Copyright (C) 2018,2019 Kurt Kanzenbach <kurt@kmk-computers.de>
+Copyright (C) 2018-2020 Kurt Kanzenbach <kurt@kmk-computers.de>
 
 ## License ##
 
