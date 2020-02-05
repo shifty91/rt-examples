@@ -196,8 +196,6 @@ static void *udp_receiver_thread(void *data)
 {
     while (!stop) {
         char buffer[1024];
-        struct sockaddr_in addr;
-        socklen_t addr_len;
         struct timespec ts;
         long long tx_time, diff;
         ssize_t len;
@@ -205,7 +203,7 @@ static void *udp_receiver_thread(void *data)
 
         /* Receive UDP package */
         len = recvfrom(udp_socket, buffer, sizeof(buffer), 0,
-                       &addr, &addr_len);
+                       NULL, NULL);
         if (len == -1) {
             log_err_errno("recvfrom() failed");
             return NULL;
