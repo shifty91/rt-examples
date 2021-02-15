@@ -33,7 +33,7 @@ void _log(const char * restrict level, int die, int with_errno,
         exit(EXIT_FAILURE);
 }
 
-void ns_to_ts(long long ns, struct timespec *ts)
+void ns_to_ts(int64_t ns, struct timespec *ts)
 {
     ts->tv_sec  = ns / NSEC_PER_SEC;
     ts->tv_nsec = ns % NSEC_PER_SEC;
@@ -50,8 +50,8 @@ void increment_period(struct timespec *time, long period_ns)
     }
 }
 
-long long calculate_diff(const struct timespec *current,
-                         const struct timespec *expected)
+int64_t calculate_diff(const struct timespec *current,
+                       const struct timespec *expected)
 {
     const int64_t expected_ns = expected->tv_sec * NSEC_PER_SEC + expected->tv_nsec;
     const int64_t current_ns = current->tv_sec * NSEC_PER_SEC + current->tv_nsec;

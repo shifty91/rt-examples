@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <libgen.h>
 #include <errno.h>
 
@@ -44,9 +45,9 @@ void _log(const char * restrict level, int die, int with_errno,
 /* timing */
 #define NSEC_PER_SEC 1000000000LL
 
-void ns_to_ts(long long ns, struct timespec *ts);
+void ns_to_ts(int64_t ns, struct timespec *ts);
 void increment_period(struct timespec *time, long period_ns);
-long long calculate_diff(const struct timespec *current,
-                         const struct timespec *expected);
+int64_t calculate_diff(const struct timespec *current,
+                       const struct timespec *expected);
 
 #endif /* _UTILS_H_ */
