@@ -43,13 +43,13 @@ static struct option long_options[] = {
 /* options */
 static const char *host;
 static const char *port;
-static long long base_time_ns;
-static long long intervall_ns;
+static int64_t base_time_ns;
+static int64_t intervall_ns;
 static int priority;
 static int socket_priority;
 static int cpu;
-static long long wakeup_time_ns;
-static long long max_packets;
+static int64_t wakeup_time_ns;
+static int64_t max_packets;
 
 /* gobal */
 static volatile int stop;
@@ -61,9 +61,9 @@ static struct sock_txtime sk_txtime;
 
 /* statistics */
 struct statistics {
-    long long packets_sent;
-    long long missed_deadline;
-    long long invalid_parameter;
+    int64_t packets_sent;
+    int64_t missed_deadline;
+    int64_t invalid_parameter;
 };
 static struct statistics current_stats = {
     .packets_sent = 0,
@@ -127,7 +127,7 @@ static int open_udp_socket(void)
 }
 
 /* See udp_tai.c */
-static int send_udp_packet(long long tx_time_ns)
+static int send_udp_packet(int64_t tx_time_ns)
 {
     char payload[1024];
     char control[CMSG_SPACE(sizeof(tx_time_ns))] = { 0 };
@@ -136,7 +136,7 @@ static int send_udp_packet(long long tx_time_ns)
     struct iovec iov;
     ssize_t cnt;
 
-    snprintf(payload, sizeof(payload), "KURT: %lld", tx_time_ns);
+    snprintf(payload, sizeof(payload), "KURT: %ld", tx_time_ns);
     payload[sizeof(payload) - 1] = '\0';
 
     iov.iov_base = payload;
@@ -153,8 +153,8 @@ static int send_udp_packet(long long tx_time_ns)
     cmsg = CMSG_FIRSTHDR(&msg);
     cmsg->cmsg_level = SOL_SOCKET;
     cmsg->cmsg_type  = SO_TXTIME;
-    cmsg->cmsg_len   = CMSG_LEN(sizeof(long long));
-    *((long long *)CMSG_DATA(cmsg)) = tx_time_ns;
+    cmsg->cmsg_len   = CMSG_LEN(sizeof(int64_t));
+    *((int64_t *)CMSG_DATA(cmsg)) = tx_time_ns;
 
     cnt = sendmsg(udp_socket, &msg, 0);
     if (cnt < 1) {
@@ -171,7 +171,7 @@ static int send_udp_packet(long long tx_time_ns)
 static int process_socket_error_queue(void)
 {
     unsigned char msg_control[CMSG_SPACE(sizeof(struct sock_extended_err))];
-    unsigned char err_buffer[sizeof(unsigned long long)];
+    unsigned char err_buffer[sizeof(uint64_t)];
     struct cmsghdr *cmsg;
     int res;
 
@@ -194,13 +194,13 @@ static int process_socket_error_queue(void)
 
     for (cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
         struct sock_extended_err *serr;
-        unsigned long long tstamp = 0;
+        uint64_t tstamp = 0;
 
         serr = (void *)CMSG_DATA(cmsg);
         if (serr->ee_origin != SO_EE_ORIGIN_TXTIME)
             continue;
 
-        tstamp = ((unsigned long long)serr->ee_data << 32) + serr->ee_info;
+        tstamp = ((uint64_t)serr->ee_data << 32) + serr->ee_info;
 
         (void)tstamp;
 
@@ -222,7 +222,7 @@ static int process_socket_error_queue(void)
 static void *cyclic_thread(void *data)
 {
     struct timespec wakeup_time;
-    long long tx_time = base_time_ns;
+    int64_t tx_time = base_time_ns;
 
     /*
      * Send the first packet at base_time. That's the TxTime. In order to have
@@ -300,7 +300,7 @@ static void *printer_thread(void *data)
         }
 
         /* Print stats */
-        printf("Packets: %20lld Missed: %20lld Invalid: %20lld\r",
+        printf("Packets: %20ld Missed: %20ld Invalid: %20ld\r",
                current_stats.packets_sent, current_stats.missed_deadline,
                current_stats.invalid_parameter);
         fflush(stdout);
@@ -335,13 +335,13 @@ static void print_parameter(void)
     printf("------------------------------------------\n");
     printf("Host:            %s\n", host);
     printf("Port:            %s\n", port);
-    printf("Base Time:       %lld [ns]\n", base_time_ns);
-    printf("Intervall:       %lld [ns]\n", intervall_ns);
+    printf("Base Time:       %ld [ns]\n", base_time_ns);
+    printf("Intervall:       %ld [ns]\n", intervall_ns);
     printf("Priority:        %d\n", priority);
     printf("Socket Priority: %d\n", socket_priority);
     printf("CPU:             %d\n", cpu);
-    printf("Wakeup Time:     %lld [ns]\n", wakeup_time_ns);
-    printf("Max. Packets:    %lld\n", max_packets);
+    printf("Wakeup Time:     %ld [ns]\n", wakeup_time_ns);
+    printf("Max. Packets:    %ld\n", max_packets);
     printf("------------------------------------------\n");
 }
 
