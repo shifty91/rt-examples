@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <errno.h>
 
 #include "utils.h"
@@ -52,16 +53,8 @@ void increment_period(struct timespec *time, long period_ns)
 long long calculate_diff(const struct timespec *current,
                          const struct timespec *expected)
 {
-    struct timespec diff;
+    const int64_t expected_ns = expected->tv_sec * NSEC_PER_SEC + expected->tv_nsec;
+    const int64_t current_ns = current->tv_sec * NSEC_PER_SEC + current->tv_nsec;
 
-    /* deal with overflow */
-    if (current->tv_nsec - expected->tv_nsec < 0) {
-        diff.tv_sec  = current->tv_sec  - expected->tv_sec - 1;
-        diff.tv_nsec = current->tv_nsec - expected->tv_nsec + NSEC_PER_SEC;
-    } else {
-        diff.tv_sec  = current->tv_sec  - expected->tv_sec;
-        diff.tv_nsec = current->tv_nsec - expected->tv_nsec;
-    }
-
-    return diff.tv_sec * NSEC_PER_SEC + diff.tv_nsec;
+    return current_ns - expected_ns;
 }
