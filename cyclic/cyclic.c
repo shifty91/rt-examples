@@ -105,6 +105,9 @@ int main(int argc, char *argv[])
     /* Setup signals */
     setup_signals();
 
+    /* Setup CPU latency */
+    configure_cpu_latency();
+
     /* Start RT thread */
     ret = pthread_create(&thread, &attr, cyclic_thread, NULL);
     if (ret)
@@ -112,6 +115,9 @@ int main(int argc, char *argv[])
 
     /* Wait for RT thread to stop */
     pthread_join(thread, NULL);
+
+    /* Restore old CPU latency */
+    restore_cpu_latency();
 
     return EXIT_SUCCESS;
 }

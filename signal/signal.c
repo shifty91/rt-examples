@@ -149,6 +149,9 @@ int main(int argc, char *argv[])
     if (ret)
         pthread_err(ret, "pthread_create() failed");
 
+    /* Setup CPU latency */
+    configure_cpu_latency();
+
     /* Start RT thread */
     ret = pthread_create(&thread1, &attr, cyclic_thread, NULL);
     if (ret)
@@ -160,6 +163,9 @@ int main(int argc, char *argv[])
     /* Wait for printer thread */
     pthread_cond_signal(&cond_signal);
     pthread_join(thread2, NULL);
+
+    /* Restore old CPU latency */
+    restore_cpu_latency();
 
     return EXIT_SUCCESS;
 }

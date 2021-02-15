@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019,2020 Kurt Kanzenbach <kurt@kmk-computers.de>
+ * Copyright (C) 2019-2021 Kurt Kanzenbach <kurt@kmk-computers.de>
  *
  * XDP code inspired by
  *  - https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/samples/bpf/xdpsock_user.c?h=v5.4-rc8
@@ -705,6 +705,8 @@ int main(int argc, char *argv[])
 
     setup_signals();
 
+    configure_cpu_latency();
+
     ret = pthread_create(&print_thread, NULL, printer_thread, NULL);
     if (ret)
         pthread_err(ret, "pthread_create() failed");
@@ -724,6 +726,8 @@ int main(int argc, char *argv[])
         close_xdp_socket();
     else
         close_udp_socket();
+
+    restore_cpu_latency();
 
     return EXIT_SUCCESS;
 }

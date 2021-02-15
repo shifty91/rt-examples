@@ -4,6 +4,11 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "utils.h"
 
@@ -57,4 +62,32 @@ int64_t calculate_diff(const struct timespec *current,
     const int64_t current_ns = current->tv_sec * NSEC_PER_SEC + current->tv_nsec;
 
     return current_ns - expected_ns;
+}
+
+static int latency_fd = -1;
+
+void configure_cpu_latency(void)
+{
+    /* Avoid the CPU to enter deep sleep states */
+    int32_t lat = 0;
+    ssize_t ret;
+    int fd;
+
+    fd = open("/dev/cpu_dma_latency", O_RDWR);
+    if (fd == -1)
+        return;
+
+    ret = write(fd, &lat, sizeof(lat));
+    if (ret != sizeof(lat)) {
+        close(latency_fd);
+        return;
+    }
+
+    latency_fd = fd;
+}
+
+void restore_cpu_latency(void)
+{
+    if (latency_fd > 0)
+        close(latency_fd);
 }

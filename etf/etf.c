@@ -447,6 +447,8 @@ int main(int argc, char *argv[])
 
     open_udp_socket();
 
+    configure_cpu_latency();
+
     ret = pthread_create(&sender, &attr, cyclic_thread, NULL);
     if (ret)
         pthread_err(ret, "pthread_create() failed");
@@ -476,6 +478,8 @@ int main(int argc, char *argv[])
     pthread_join(checker, NULL);
 
     close_udp_socket();
+
+    restore_cpu_latency();
 
     return EXIT_SUCCESS;
 }

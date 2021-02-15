@@ -50,4 +50,7 @@ void increment_period(struct timespec *time, long period_ns);
 int64_t calculate_diff(const struct timespec *current,
                        const struct timespec *expected);
 
+void configure_cpu_latency(void);
+void restore_cpu_latency(void);
+
 #endif /* _UTILS_H_ */
