@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2019-2021 Kurt Kanzenbach <kurt@kmk-computers.de>
+ *
+ * Demonstrate how to use the Tx launch time feature available in recent Linux
+ * kernel versions and some dedicate NICs such as the Intel i210/225.
+ *
+ * Run scripts/etf.sh to configure the network interface first.
+ */
+
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +25,11 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 
+#include <linux/if.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
 #include <linux/errqueue.h>
 #include <linux/ethtool.h>
 #include <linux/net_tstamp.h>
@@ -36,6 +49,8 @@ static struct option long_options[] = {
     { "cpu",         optional_argument, NULL, 'c' }, /* default: cpu 0 */
     { "wakeup",      optional_argument, NULL, 'w' }, /* default: 500us */
     { "max_packets", optional_argument, NULL, 'm' }, /* default: 0 */
+    { "raw",         no_argument,       NULL, 'r' }, /* default: UDP */
+    { "interface",   optional_argument, NULL, 'i' }, /* default: eth0 */
     { "help",        no_argument,       NULL, 'h' },
     { NULL },
 };
@@ -50,14 +65,21 @@ static int socket_priority;
 static int cpu;
 static int64_t wakeup_time_ns;
 static int64_t max_packets;
+static int raw;
+static const char *interface;
 
-/* gobal */
+/* global */
 static volatile int stop;
 
 /* udp */
-static int udp_socket;
+static int socket_fd;
 static struct sockaddr_in udp_sin;
 static struct sock_txtime sk_txtime;
+
+/* raw */
+static struct sockaddr_ll raw_addr;
+static unsigned char source[ETH_ALEN];
+static unsigned char destination[ETH_ALEN];
 
 /* statistics */
 struct statistics {
@@ -71,54 +93,83 @@ static struct statistics current_stats = {
     .invalid_parameter = 0
 };
 
-static int close_udp_socket(void)
+static void close_socket(void)
 {
-    close(udp_socket);
-    return 0;
+    close(socket_fd);
 }
 
-static int open_udp_socket(void)
+#define ETH_P_ETF	(0x4242)
+static int open_socket(void)
 {
-    int res;
-    int sock = -1;
     struct addrinfo *sa_head, *sa, hints;
+    int sock = -1;
+    int res;
 
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_family   = PF_INET;
-    hints.ai_flags    = AI_ADDRCONFIG;
+    if (!raw) {
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_family   = PF_INET;
+        hints.ai_flags    = AI_ADDRCONFIG;
 
-    res = getaddrinfo(host, port, &hints, &sa_head);
-    if (res)
-        err("getaddrinfo() for host %s failed: %s", host, gai_strerror(res));
+        res = getaddrinfo(host, port, &hints, &sa_head);
+        if (res)
+            err("getaddrinfo() for host %s failed: %s", host, gai_strerror(res));
 
-    for (sa = sa_head; sa != NULL; sa = sa->ai_next) {
-        sock = socket(sa->ai_family, sa->ai_socktype, sa->ai_protocol);
-        if (sock < 0) {
-            log_err_errno("socket() failed");
-            continue;
+        for (sa = sa_head; sa != NULL; sa = sa->ai_next) {
+            sock = socket(sa->ai_family, sa->ai_socktype, sa->ai_protocol);
+            if (sock < 0) {
+                log_err_errno("socket() failed");
+                continue;
+            }
+
+            /* Got one */
+            memcpy(&udp_sin, sa->ai_addr, sa->ai_addrlen);
+            socket_fd = sock;
+            break;
         }
 
-        /* Got one */
-        memcpy(&udp_sin, sa->ai_addr, sa->ai_addrlen);
-        udp_socket = sock;
-        break;
+        if (!sa)
+            err_errno("Lookup for host %s on service %s failed", host,
+                      port);
+
+        freeaddrinfo(sa_head);
+    } else {
+        struct ifreq ifreq = { 0 };
+
+        /* Open RAW socket on ETF protocol */
+        sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ETF));
+        if (sock < 0)
+            err_errno("socket() failed");
+        socket_fd = sock;
+
+        /* Interface index */
+        strncpy(ifreq.ifr_name, interface, IFNAMSIZ - 1);
+        res = ioctl(socket_fd, SIOCGIFINDEX, &ifreq);
+        if (res)
+            err_errno("ioctl() failed");
+        raw_addr.sll_ifindex = ifreq.ifr_ifindex;
+
+        /* Interface source address */
+        memset(&ifreq, '\0', sizeof(ifreq));
+        strncpy(ifreq.ifr_name, interface, IFNAMSIZ - 1);
+        res = ioctl(socket_fd, SIOCGIFHWADDR, &ifreq);
+        if (res)
+            err_errno("ioctl() failed");
+        memcpy(raw_addr.sll_addr, &ifreq.ifr_hwaddr.sa_data, ETH_ALEN);
+        memcpy(source, &ifreq.ifr_hwaddr.sa_data, ETH_ALEN);
+        raw_addr.sll_halen = ETH_ALEN;
     }
 
-    if (!sa)
-        err_errno("Lookup for host %s on service %s failed", host,
-                  port);
-
-    freeaddrinfo(sa_head);
-
-    res = setsockopt(udp_socket, SOL_SOCKET, SO_PRIORITY,
+    /* Configure socket priority */
+    res = setsockopt(socket_fd, SOL_SOCKET, SO_PRIORITY,
                      &socket_priority, sizeof(socket_priority));
     if (res)
         err_errno("setsockopt() failed");
 
+    /* Configure Tx time on the socket and enabled error reporting */
     sk_txtime.clockid = CLOCK_TAI;
-    sk_txtime.flags   = 1 << 1; /* Report errors and no deadline mode */
-    res = setsockopt(udp_socket, SOL_SOCKET, SO_TXTIME,
+    sk_txtime.flags   = 1 << 1;
+    res = setsockopt(socket_fd, SOL_SOCKET, SO_TXTIME,
                      &sk_txtime, sizeof(sk_txtime));
     if (res)
         err_errno("setsockopt() failed");
@@ -127,24 +178,43 @@ static int open_udp_socket(void)
 }
 
 /* See udp_tai.c */
-static int send_udp_packet(int64_t tx_time_ns)
+static int send_packet(int64_t tx_time_ns)
 {
-    char payload[1024];
+    char payload[4096];
     char control[CMSG_SPACE(sizeof(tx_time_ns))] = { 0 };
     struct cmsghdr *cmsg;
     struct msghdr msg;
     struct iovec iov;
     ssize_t cnt;
+    size_t len;
+    char *p;
 
-    snprintf(payload, sizeof(payload), "KURT: %ld", tx_time_ns);
-    payload[sizeof(payload) - 1] = '\0';
+    p = payload;
+    len = sizeof(payload);
+    if (raw) {
+        struct ethhdr *eth = (struct ethhdr *)payload;
+
+        memcpy(eth->h_dest, destination, ETH_ALEN);
+        memcpy(eth->h_source, source, ETH_ALEN);
+        eth->h_proto = htons(ETH_P_ETF);
+
+        p += sizeof(*eth);
+        len -= sizeof(*eth);
+    }
+
+    len -= snprintf(p, len, "KURT: %ld", tx_time_ns);
 
     iov.iov_base = payload;
-    iov.iov_len  = strlen(payload);
+    iov.iov_len  = sizeof(payload) - len;
 
     memset(&msg, 0, sizeof(msg));
-    msg.msg_name       = &udp_sin;
-    msg.msg_namelen    = sizeof(udp_sin);
+    if (!raw) {
+        msg.msg_name    = &udp_sin;
+        msg.msg_namelen = sizeof(udp_sin);
+    } else {
+        msg.msg_name    = &raw_addr;
+        msg.msg_namelen = sizeof(raw_addr);
+    }
     msg.msg_iov        = &iov;
     msg.msg_iovlen     = 1;
     msg.msg_control    = control;
@@ -156,7 +226,7 @@ static int send_udp_packet(int64_t tx_time_ns)
     cmsg->cmsg_len   = CMSG_LEN(sizeof(int64_t));
     *((int64_t *)CMSG_DATA(cmsg)) = tx_time_ns;
 
-    cnt = sendmsg(udp_socket, &msg, 0);
+    cnt = sendmsg(socket_fd, &msg, 0);
     if (cnt < 1) {
         log_err_errno("sendmsg() failed");
         return cnt;
@@ -186,7 +256,7 @@ static int process_socket_error_queue(void)
         .msg_controllen = sizeof(msg_control)
     };
 
-    res = recvmsg(udp_socket, &msg, MSG_ERRQUEUE);
+    res = recvmsg(socket_fd, &msg, MSG_ERRQUEUE);
     if (res == -1) {
         log_err_errno("recvmsg() failed");
         return res;
@@ -244,7 +314,7 @@ static void *cyclic_thread(void *data)
         }
 
         /* Send the UDP packet */
-        ret = send_udp_packet(tx_time);
+        ret = send_packet(tx_time);
         if (ret)
             return NULL;
 
@@ -261,7 +331,7 @@ static void *cyclic_thread(void *data)
 
 static void *error_thread(void *data)
 {
-    struct pollfd p_fd = { .fd = udp_socket };
+    struct pollfd p_fd = { .fd = socket_fd };
 
     while (!stop) {
         int ret;
@@ -313,8 +383,8 @@ static void set_default_parameter(void)
 {
     struct timespec ts;
 
-    host      = "localhost";
-    port      = "6666";
+    host = "localhost";
+    port = "6666";
 
     if (clock_gettime(CLOCK_TAI, &ts))
         err_errno("clock_gettime() failed");
@@ -324,10 +394,12 @@ static void set_default_parameter(void)
 
     intervall_ns    = 1000000;
     priority        = 99;
-    socket_priority = 3;
+    socket_priority = 4;
     cpu             = 0;
     wakeup_time_ns  = 500000;
     max_packets     = 0;
+    raw             = 0;
+    interface       = "eth0";
 }
 
 static void print_parameter(void)
@@ -342,13 +414,15 @@ static void print_parameter(void)
     printf("CPU:             %d\n", cpu);
     printf("Wakeup Time:     %ld [ns]\n", wakeup_time_ns);
     printf("Max. Packets:    %ld\n", max_packets);
+    printf("RAW:             %s\n", raw ? "RAW" : "UDP");
+    printf("Interface:       %s\n", interface);
     printf("------------------------------------------\n");
 }
 
 static void print_usage_and_die(void)
 {
     fprintf(stderr, "usage: etf [options]\n");
-    fprintf(stderr, "  -H,--host:        Remote host\n");
+    fprintf(stderr, "  -H,--host:        Remote host or destination MAC address in case of raw\n");
     fprintf(stderr, "  -P,--port:        Remote port\n");
     fprintf(stderr, "  -b,--base:        When to start in ns in reference to CLOCK_TAI\n");
     fprintf(stderr, "  -I,--intervall:   Period in ns\n");
@@ -357,8 +431,30 @@ static void print_usage_and_die(void)
     fprintf(stderr, "  -c,--cpu:         CPU to run on\n");
     fprintf(stderr, "  -w,--wakeup:      Time to wakeup before TxTime in ns\n");
     fprintf(stderr, "  -m,--max_packets: Maximum number of packets to send\n");
+    fprintf(stderr, "  -r,--raw:         Use RAW Ethernet packets instead of UDP\n");
+    fprintf(stderr, "  -i,--interface:   Network interface to be used\n");
 
     exit(EXIT_SUCCESS);
+}
+
+static int parse_mac_address(const char *string, unsigned char *addr)
+{
+    unsigned int tmp[ETH_ALEN];
+    int ret;
+
+    ret = sscanf(string, "%02x:%02x:%02x:%02x:%02x:%02x",
+                 &tmp[0], &tmp[1], &tmp[2], &tmp[3], &tmp[4], &tmp[5]);
+    if (ret != 6)
+        return -EINVAL;
+
+    addr[0] = tmp[0];
+    addr[1] = tmp[1];
+    addr[2] = tmp[2];
+    addr[3] = tmp[3];
+    addr[4] = tmp[4];
+    addr[5] = tmp[5];
+
+    return 0;
 }
 
 int main(int argc, char *argv[])
@@ -371,7 +467,7 @@ int main(int argc, char *argv[])
 
     set_default_parameter();
 
-    while ((c = getopt_long(argc, argv, "hH:P:b:I:p:s:c:w:m:",
+    while ((c = getopt_long(argc, argv, "hH:P:b:I:p:s:c:w:m:ri:",
                             long_options, NULL)) != -1) {
         switch (c) {
         case 'h':
@@ -404,6 +500,12 @@ int main(int argc, char *argv[])
         case 'm':
             max_packets = atoll(optarg);
             break;
+        case 'r':
+            raw = 1;
+            break;
+        case 'i':
+            interface = optarg;
+            break;
         default:
             print_usage_and_die();
         }
@@ -411,6 +513,9 @@ int main(int argc, char *argv[])
     if (base_time_ns < 0 || intervall_ns < 0 || priority < 0 ||
         socket_priority < 0 || cpu < 0 || wakeup_time_ns < 0 ||
         max_packets < 0)
+        print_usage_and_die();
+
+    if (raw && parse_mac_address(host, destination))
         print_usage_and_die();
 
     print_parameter();
@@ -445,7 +550,7 @@ int main(int argc, char *argv[])
     if (ret)
         pthread_err(ret, "pthread_attr_setaffinity_np() failed");
 
-    open_udp_socket();
+    open_socket();
 
     configure_cpu_latency();
 
@@ -477,7 +582,7 @@ int main(int argc, char *argv[])
     pthread_join(printer, NULL);
     pthread_join(checker, NULL);
 
-    close_udp_socket();
+    close_socket();
 
     restore_cpu_latency();
 
