@@ -29,20 +29,22 @@
 
 #include <arpa/inet.h>
 
-#include "rt_config.h"
-
-#ifdef WITH_XDP
 #include <linux/if_link.h>
-#include <linux/if_xdp.h>
 #include <linux/if_ether.h>
 #include <linux/udp.h>
 #include <linux/ip.h>
+
+#include "rt_config.h"
+
+#ifdef WITH_XDP
+#include <linux/if_xdp.h>
 
 #include <bpf/bpf.h>
 #include <bpf/xsk.h>
 #include <bpf/libbpf.h>
 #endif
 
+#include "etf.h"
 #include "utils.h"
 
 static struct option long_options[] = {
@@ -52,6 +54,7 @@ static struct option long_options[] = {
     { "priority",    optional_argument, NULL, 'p' }, /* default: 99 */
     { "cpu",         optional_argument, NULL, 'c' }, /* default: cpu 0 */
     { "xdp",         optional_argument, NULL, 'x' }, /* default: no */
+    { "raw",         no_argument,       NULL, 'r' }, /* default: UDP */
     { "skb_mode",    optional_argument, NULL, 's' }, /* default: no */
     { "queue",       optional_argument, NULL, 'q' }, /* default: 0 */
     { "break_value", optional_argument, NULL, 'B' }, /* default: 0 */
@@ -69,6 +72,7 @@ static const char *interface;
 static int priority;
 static int cpu;
 static int xdp;
+static int raw;
 static int skb_mode;
 static int queue;
 static int64_t break_value_ns;
@@ -79,8 +83,8 @@ static int64_t intervall_ns;
 /* gobal */
 static volatile int stop;
 
-/* udp */
-static int udp_socket;
+/* udp/raw */
+static int socket_fd;
 
 /* xdp */
 #ifdef WITH_XDP
@@ -118,49 +122,57 @@ static struct stats current_stats = {
     .avg = 0.0,
 };
 
-static void close_udp_socket(void)
+static void close_socket(void)
 {
-    close(udp_socket);
+    close(socket_fd);
 }
 
-static int open_udp_socket(void)
+static int open_socket(void)
 {
-    int res;
-    int sock = -1;
     struct addrinfo *sa_head, *sa, hints;
+    int sock = -1;
+    int res;
 
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_family   = PF_INET;
-    hints.ai_flags    = AI_ADDRCONFIG;
+    if (!raw) {
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_family   = PF_INET;
+        hints.ai_flags    = AI_ADDRCONFIG;
 
-    res = getaddrinfo(host, port, &hints, &sa_head);
-    if (res)
-        err("getaddrinfo() for host %s failed: %s", host, gai_strerror(res));
+        res = getaddrinfo(host, port, &hints, &sa_head);
+        if (res)
+            err("getaddrinfo() for host %s failed: %s", host, gai_strerror(res));
 
-    for (sa = sa_head; sa != NULL; sa = sa->ai_next) {
-        sock = socket(sa->ai_family, sa->ai_socktype, sa->ai_protocol);
-        if (sock < 0) {
-            log_err_errno("socket() failed");
-            continue;
+        for (sa = sa_head; sa != NULL; sa = sa->ai_next) {
+            sock = socket(sa->ai_family, sa->ai_socktype, sa->ai_protocol);
+            if (sock < 0) {
+                log_err_errno("socket() failed");
+                continue;
+            }
+
+            res = bind(sock, sa->ai_addr, sa->ai_addrlen);
+            if (res) {
+                log_err_errno("bind() failed");
+                continue;
+            }
+
+            /* Got one */
+            socket_fd = sock;
+            break;
         }
 
-        res = bind(sock, sa->ai_addr, sa->ai_addrlen);
-        if (res) {
-            log_err_errno("bind() failed");
-            continue;
-        }
+        if (!sa)
+            err_errno("Lookup for host %s on service %s failed", host,
+                      port);
 
-        /* Got one */
-        udp_socket = sock;
-        break;
+        freeaddrinfo(sa_head);
+    } else {
+        /* Open RAW socket on ETF protocol */
+        sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ETF));
+        if (sock < 0)
+            err_errno("socket() failed");
+        socket_fd = sock;
     }
-
-    if (!sa)
-        err_errno("Lookup for host %s on service %s failed", host,
-                  port);
-
-    freeaddrinfo(sa_head);
 
     return 0;
 }
@@ -190,17 +202,17 @@ static void stop_tracing(void)
         log_err_errno("system() failed");
 }
 
-static void *udp_receiver_thread(void *data)
+static void *receiver_thread(void *data)
 {
     while (!stop) {
-        char buffer[1024];
-        struct timespec ts;
         int64_t tx_time, diff;
+        char buffer[4096], *p;
+        struct timespec ts;
         ssize_t len;
         int ret;
 
-        /* Receive UDP package */
-        len = recvfrom(udp_socket, buffer, sizeof(buffer), 0,
+        /* Receive UDP/RAW frame */
+        len = recvfrom(socket_fd, buffer, sizeof(buffer), 0,
                        NULL, NULL);
         if (len == -1) {
             log_err_errno("recvfrom() failed");
@@ -216,9 +228,18 @@ static void *udp_receiver_thread(void *data)
         }
 
         /* Decode */
-        ret = sscanf(buffer, "KURT: %ld", &tx_time);
+        p = buffer;
+        if (raw) {
+            if (len < sizeof(struct ethhdr)) {
+                log_err("Failed to decode packet");
+                continue;
+            }
+            p += sizeof(struct ethhdr);
+        }
+
+        ret = sscanf(p, "KURT: %ld", &tx_time);
         if (ret != 1) {
-            log_err("Failed to decode package");
+            log_err("Failed to decode packet");
             continue;
         }
 
@@ -252,11 +273,18 @@ static char *parse_raw_packet(uint64_t addr, size_t len)
     ip  = (struct iphdr *)(packet + sizeof(*eth));
     udp = (struct udphdr *)(packet + sizeof(*eth) + sizeof(*ip));
 
-    if (ntohs(eth->h_proto) != ETH_P_IP ||
-        ntohs(udp->dest) != atoi(port))
-        return NULL;
+    if (!raw) {
+        if (ntohs(eth->h_proto) != ETH_P_IP ||
+            ntohs(udp->dest) != atoi(port))
+            return NULL;
 
-    payload = packet + sizeof(*eth) + sizeof(*ip) + sizeof(*udp);
+        payload = packet + sizeof(*eth) + sizeof(*ip) + sizeof(*udp);
+    } else {
+        if (ntohs(eth->h_proto) != ETH_P_ETF)
+            return NULL;
+
+        payload = packet + sizeof(*eth);
+    }
 
     return payload;
 }
@@ -420,6 +448,7 @@ static void set_default_parameter(void)
     priority       = 99;
     cpu            = 0;
     xdp            = 0;
+    raw            = 0;
     skb_mode       = 0;
     queue          = 0;
     break_value_ns = 0;
@@ -437,6 +466,7 @@ static void print_parameter(void)
     printf("Priority:    %d\n", priority);
     printf("CPU:         %d\n", cpu);
     printf("XDP:         %s\n", xdp ? "Yes" : "No");
+    printf("RAW:         %s\n", raw ? "RAW" : "UDP");
     printf("SKB Mode:    %s\n", skb_mode ? "Yes" : "No");
     printf("Queue:       %d\n", queue);
     printf("Break:       %ld [ns]\n", break_value_ns);
@@ -455,6 +485,7 @@ static void print_usage_and_die(void)
     fprintf(stderr, "  -p,--priority:    Thread priority\n");
     fprintf(stderr, "  -c,--cpu:         CPU to run on\n");
     fprintf(stderr, "  -x,--xdp:         Use XDP instead of UDP sockets\n");
+    fprintf(stderr, "  -r,--raw:         Use RAW Ethernet instead of UDP\n");
     fprintf(stderr, "  -s,--skb_mode:    Use SKB instead of driver mode for XDP\n");
     fprintf(stderr, "  -q,--queue:       Queue to be used for XDP\n");
     fprintf(stderr, "  -B,--break_value: Max difference where to stop tracing\n");
@@ -522,7 +553,6 @@ static void setup_xdp_socket(void)
     int ret, prog_fd, xsks_map = 0;
     struct bpf_prog_load_attr prog_load_attr = {
         .prog_type = BPF_PROG_TYPE_XDP,
-        .file      = "xdp_kern.o",
     };
     struct xsk_umem_config cfg = {
         .fill_size      = XSK_RING_PROD__DEFAULT_NUM_DESCS,
@@ -534,6 +564,11 @@ static void setup_xdp_socket(void)
     struct bpf_object *obj;
     struct bpf_map *map;
     void *buffer = NULL;
+
+    if (raw)
+        prog_load_attr.file = "xdp_kern_raw.o";
+    else
+        prog_load_attr.file = "xdp_kern_udp.o";
 
     ret = bpf_prog_load_xattr(&prog_load_attr, &obj, &prog_fd);
     if (ret || prog_fd < 0)
@@ -600,7 +635,7 @@ int main(int argc, char *argv[])
 
     set_default_parameter();
 
-    while ((c = getopt_long(argc, argv, "hH:P:i:p:c:xsq:B:b:w:I:",
+    while ((c = getopt_long(argc, argv, "hH:P:i:p:c:xrsq:B:b:w:I:",
                             long_options, NULL)) != -1) {
         switch (c) {
         case 'h':
@@ -623,6 +658,9 @@ int main(int argc, char *argv[])
             break;
         case 'x':
             xdp = 1;
+            break;
+        case 'r':
+            raw = 1;
             break;
         case 's':
             skb_mode = 1;
@@ -694,9 +732,9 @@ int main(int argc, char *argv[])
         if (ret)
             pthread_err(ret, "pthread_create() failed");
     } else {
-        open_udp_socket();
+        open_socket();
 
-        ret = pthread_create(&recv_thread, &attr, udp_receiver_thread, NULL);
+        ret = pthread_create(&recv_thread, &attr, receiver_thread, NULL);
         if (ret)
             pthread_err(ret, "pthread_create() failed");
     }
@@ -723,7 +761,7 @@ int main(int argc, char *argv[])
     if (xdp)
         close_xdp_socket();
     else
-        close_udp_socket();
+        close_socket();
 
     restore_cpu_latency();
 
