@@ -71,10 +71,10 @@ static int cpu;
 static int xdp;
 static int skb_mode;
 static int queue;
-static long long break_value_ns;
-static long long base_time_ns;
-static long long wakeup_time_ns;
-static long long intervall_ns;
+static int64_t break_value_ns;
+static int64_t base_time_ns;
+static int64_t wakeup_time_ns;
+static int64_t intervall_ns;
 
 /* gobal */
 static volatile int stop;
@@ -106,9 +106,9 @@ static struct xdpsock xdp_socket;
 
 /* statistics */
 struct stats {
-    long long packets_received;
-    long long min;
-    long long max;
+    int64_t packets_received;
+    int64_t min;
+    int64_t max;
     double avg;
 };
 static struct stats current_stats = {
@@ -165,9 +165,9 @@ static int open_udp_socket(void)
     return 0;
 }
 
-static long long update_stats(const struct timespec *now, long long expected)
+static int64_t update_stats(const struct timespec *now, int64_t expected)
 {
-    long long diff;
+    int64_t diff;
 
     /* Update stats */
     diff = (now->tv_sec * NSEC_PER_SEC + now->tv_nsec) - expected;
@@ -195,7 +195,7 @@ static void *udp_receiver_thread(void *data)
     while (!stop) {
         char buffer[1024];
         struct timespec ts;
-        long long tx_time, diff;
+        int64_t tx_time, diff;
         ssize_t len;
         int ret;
 
@@ -216,7 +216,7 @@ static void *udp_receiver_thread(void *data)
         }
 
         /* Decode */
-        ret = sscanf(buffer, "KURT: %lld", &tx_time);
+        ret = sscanf(buffer, "KURT: %ld", &tx_time);
         if (ret != 1) {
             log_err("Failed to decode package");
             continue;
@@ -278,7 +278,7 @@ static void *xdp_receiver_thread(void *data)
 
     while (!stop) {
         char *buffer;
-        long long tx_time, diff;
+        int64_t tx_time, diff;
         struct timespec ts;
         unsigned int received;
         uint64_t addr;
@@ -342,7 +342,7 @@ static void *xdp_receiver_thread(void *data)
             continue;
 
         /* Decode */
-        ret = sscanf(buffer, "KURT: %lld", &tx_time);
+        ret = sscanf(buffer, "KURT: %ld", &tx_time);
         if (ret != 1) {
             log_err("Failed to decode package");
             continue;
@@ -402,7 +402,7 @@ static void *printer_thread(void *data)
         }
 
         /* Print stats */
-        printf("Packets: %20lld Min: %20lld [ns] Max: %20lld [ns] AVG: %20lf\r",
+        printf("Packets: %20ld Min: %20ld [ns] Max: %20ld [ns] AVG: %20lf\r",
                current_stats.packets_received, current_stats.min,
                current_stats.max,
                current_stats.avg / (double)current_stats.packets_received);
@@ -439,10 +439,10 @@ static void print_parameter(void)
     printf("XDP:         %s\n", xdp ? "Yes" : "No");
     printf("SKB Mode:    %s\n", skb_mode ? "Yes" : "No");
     printf("Queue:       %d\n", queue);
-    printf("Break:       %lld [ns]\n", break_value_ns);
-    printf("Base Time:   %lld [ns]\n", base_time_ns);
-    printf("Wakeup Time: %lld [ns]\n", wakeup_time_ns);
-    printf("Intervall:   %lld [ns]\n", intervall_ns);
+    printf("Break:       %ld [ns]\n", break_value_ns);
+    printf("Base Time:   %ld [ns]\n", base_time_ns);
+    printf("Wakeup Time: %ld [ns]\n", wakeup_time_ns);
+    printf("Intervall:   %ld [ns]\n", intervall_ns);
     printf("------------------------------------------\n");
 }
 
