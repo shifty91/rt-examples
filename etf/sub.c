@@ -117,8 +117,8 @@ struct stats {
 };
 static struct stats current_stats = {
     .packets_received = 0,
-    .min = LLONG_MAX,
-    .max = LLONG_MIN,
+    .min = INT64_MAX,
+    .max = INT64_MIN,
     .avg = 0.0,
 };
 
