@@ -84,7 +84,7 @@ static int udp_socket;
 
 /* xdp */
 #ifdef WITH_XDP
-#define NUM_FRAMES         4096
+#define NUM_FRAMES         (XSK_RING_CONS__DEFAULT_NUM_DESCS + XSK_RING_PROD__DEFAULT_NUM_DESCS)
 #define FRAME_SIZE         XSK_UMEM__DEFAULT_FRAME_SIZE
 
 unsigned int ifindex;
