@@ -330,8 +330,12 @@ static void *xdp_receiver_thread(void *data)
              * be used for that.
              */
             received = xsk_ring_cons__peek(&xdp_socket.rx, 1, &idx_rx);
-            if (!received)
+            if (!received) {
+                if (xsk_ring_prod__needs_wakeup(&xdp_socket.umem.fq))
+                    recvfrom(xsk_socket__fd(xdp_socket.xsk), NULL, 0,
+                             MSG_DONTWAIT, NULL, NULL);
                 continue;
+            }
         } else {
             do {
                 ret = clock_nanosleep(CLOCK_TAI, TIMER_ABSTIME, &wakeup_time,
@@ -341,6 +345,12 @@ static void *xdp_receiver_thread(void *data)
             /* Busy busy... */
             while (23) {
                 received = xsk_ring_cons__peek(&xdp_socket.rx, 1, &idx_rx);
+
+                if (!received)
+                    if (xsk_ring_prod__needs_wakeup(&xdp_socket.umem.fq))
+                        recvfrom(xsk_socket__fd(xdp_socket.xsk), NULL, 0,
+                                 MSG_DONTWAIT, NULL, NULL);
+
                 if (received)
                     break;
             }
@@ -380,17 +390,21 @@ static void *xdp_receiver_thread(void *data)
         xsk_ring_cons__release(&xdp_socket.rx, received);
 
         /* Add that particular buffer back to the fill queue */
-        if (xsk_prod_nb_free(&xdp_socket.umem.fq, received)) {
-            ret = xsk_ring_prod__reserve(&xdp_socket.umem.fq, received, &idx);
-
-            if (ret != received)
+        ret = xsk_ring_prod__reserve(&xdp_socket.umem.fq, received, &idx);
+        while (ret != received) {
+            if (ret < 0)
                 err("xsk_ring_prod__reserve() failed");
 
-            *xsk_ring_prod__fill_addr(&xdp_socket.umem.fq, idx) =
-                xsk_umem__extract_addr(addr);
-
-            xsk_ring_prod__submit(&xdp_socket.umem.fq, received);
+            if (xsk_ring_prod__needs_wakeup(&xdp_socket.umem.fq))
+                recvfrom(xsk_socket__fd(xdp_socket.xsk), NULL, 0,
+                         MSG_DONTWAIT, NULL, NULL);
+            ret = xsk_ring_prod__reserve(&xdp_socket.umem.fq, received, &idx);
         }
+
+        *xsk_ring_prod__fill_addr(&xdp_socket.umem.fq, idx) =
+            xsk_umem__extract_addr(addr);
+
+        xsk_ring_prod__submit(&xdp_socket.umem.fq, received);
 
         /* Update stats */
         diff = update_stats(&ts, tx_time);
