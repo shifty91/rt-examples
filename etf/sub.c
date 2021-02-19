@@ -81,7 +81,6 @@ static volatile int stop;
 
 /* udp */
 static int udp_socket;
-static struct sockaddr_in udp_sin;
 
 /* xdp */
 #ifdef WITH_XDP
@@ -153,7 +152,6 @@ static int open_udp_socket(void)
         }
 
         /* Got one */
-        memcpy(&udp_sin, sa->ai_addr, sa->ai_addrlen);
         udp_socket = sock;
         break;
     }
