@@ -36,18 +36,33 @@ if (WITH_XDP)
   target_include_directories(sub PRIVATE ${LIBBPF_INCLUDE_DIRS})
   target_link_libraries(sub ${LIBBPF_LIBRARIES})
 
+  set(CLANG_FLAGS -S -target bpf -D __BPF_TRACING__ -Wall -O2 -emit-llvm -g)
+  set(LLC_FLAGS -march=bpf -filetype=obj)
+
   # build bpf program
-  add_custom_target(xdp_sub_prog_stage1 ALL
-    COMMAND clang -S -target bpf -D __BPF_TRACING__ -Wall -O2 -emit-llvm -c -g -o xdp_kern.ll xdp_kern.c
+  add_custom_target(xdp_sub_udp_prog_stage1 ALL
+    COMMAND clang ${CLANG_FLAGS} -c -o xdp_kern_udp.ll xdp_kern_udp.c
     DEPENDS sub
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/etf
-    SOURCES etf/xdp_kern.c
+    SOURCES etf/xdp_kern_udp.c
     )
-  add_custom_target(xdp_sub_prog_stage2 ALL
-    COMMAND llc -march=bpf -filetype=obj -o ${CMAKE_BINARY_DIR}/xdp_kern.o xdp_kern.ll
-    DEPENDS xdp_sub_prog_stage1
+  add_custom_target(xdp_sub_raw_prog_stage1 ALL
+    COMMAND clang ${CLANG_FLAGS} -c -o xdp_kern_raw.ll xdp_kern_raw.c
+    DEPENDS sub
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/etf
-    SOURCES etf/xdp_kern.c
+    SOURCES etf/xdp_kern_raw.c
+    )
+  add_custom_target(xdp_sub_udp_prog_stage2 ALL
+    COMMAND llc ${LLC_FLAGS} -o ${CMAKE_BINARY_DIR}/xdp_kern_udp.o xdp_kern_udp.ll
+    DEPENDS xdp_sub_udp_prog_stage1
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/etf
+    SOURCES etf/xdp_kern_udp.c
+    )
+  add_custom_target(xdp_sub_raw_prog_stage2 ALL
+    COMMAND llc ${LLC_FLAGS} -o ${CMAKE_BINARY_DIR}/xdp_kern_raw.o xdp_kern_raw.ll
+    DEPENDS xdp_sub_raw_prog_stage1
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/etf
+    SOURCES etf/xdp_kern_raw.c
     )
 endif()
 

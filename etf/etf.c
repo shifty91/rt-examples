@@ -37,6 +37,7 @@
 
 #include <arpa/inet.h>
 
+#include "etf.h"
 #include "utils.h"
 
 static struct option long_options[] = {
@@ -98,7 +99,6 @@ static void close_socket(void)
     close(socket_fd);
 }
 
-#define ETH_P_ETF	(0x4242)
 static int open_socket(void)
 {
     struct addrinfo *sa_head, *sa, hints;
