@@ -583,7 +583,7 @@ static void setup_xdp_socket(void)
     if (!ifindex)
         err_errno("if_nametoindex() failed");
 
-    /* Use XDP _only_ in conjuction with driver assisted mode */
+    /* Use XDP in conjuction with driver assisted or software mode */
     ret = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags());
     if (ret)
         err("bpf_set_link_xdp_fd() failed");
