@@ -90,6 +90,7 @@ static int socket_fd;
 #ifdef WITH_XDP
 #define NUM_FRAMES         (XSK_RING_CONS__DEFAULT_NUM_DESCS + XSK_RING_PROD__DEFAULT_NUM_DESCS)
 #define FRAME_SIZE         XSK_UMEM__DEFAULT_FRAME_SIZE
+#define BATCH_SIZE         32
 
 unsigned int ifindex;
 struct xsk_umem_info {
@@ -111,12 +112,16 @@ static struct xdpsock xdp_socket;
 /* statistics */
 struct stats {
     int64_t packets_received;
+    int64_t payload_mismatch;
+    int64_t cycle_mismatch;
     int64_t min;
     int64_t max;
     double avg;
 };
 static struct stats current_stats = {
     .packets_received = 0,
+    .payload_mismatch = 0,
+    .cycle_mismatch = 0,
     .min = INT64_MAX,
     .max = INT64_MIN,
     .avg = 0.0,
@@ -231,7 +236,7 @@ static void *receiver_thread(void *data)
         p = buffer;
         if (raw) {
             if (len < sizeof(struct ethhdr)) {
-                log_err("Failed to decode packet");
+                current_stats.payload_mismatch++;
                 continue;
             }
             p += sizeof(struct ethhdr);
@@ -239,7 +244,7 @@ static void *receiver_thread(void *data)
 
         ret = sscanf(p, "KURT: %ld", &tx_time);
         if (ret != 1) {
-            log_err("Failed to decode packet");
+            current_stats.payload_mismatch++;
             continue;
         }
 
@@ -260,9 +265,12 @@ static char *parse_raw_packet(uint64_t addr, size_t len)
 {
     char *packet, *payload;
     struct ethhdr *eth;
-    struct iphdr *ip;
     struct udphdr *udp;
-    size_t min_len = sizeof(*eth) + sizeof(*ip) + sizeof(*udp);
+    struct iphdr *ip;
+    size_t min_len = sizeof(*eth);
+
+    if (!raw)
+        min_len += sizeof(*ip) + sizeof(*udp);
 
     if (len <= min_len)
         return NULL;
@@ -305,12 +313,12 @@ static void *xdp_receiver_thread(void *data)
         ns_to_ts(base_time_ns - wakeup_time_ns, &wakeup_time);
 
     while (!stop) {
-        char *buffer;
-        int64_t tx_time, diff;
+        uint32_t idx_rx = 0, idx_fq = 0, len;
+        int64_t tx_time = 0, diff;
+        unsigned int received, i;
         struct timespec ts;
-        unsigned int received;
         uint64_t addr;
-        uint32_t idx_rx = 0, len, idx;
+        char *buffer;
         int ret;
 
         /* So, we have to options here:
@@ -329,7 +337,7 @@ static void *xdp_receiver_thread(void *data)
              * be sure, that the NIC queue is correctly confgured. ethtool can
              * be used for that.
              */
-            received = xsk_ring_cons__peek(&xdp_socket.rx, 1, &idx_rx);
+            received = xsk_ring_cons__peek(&xdp_socket.rx, BATCH_SIZE, &idx_rx);
             if (!received) {
                 if (xsk_ring_prod__needs_wakeup(&xdp_socket.umem.fq))
                     recvfrom(xsk_socket__fd(xdp_socket.xsk), NULL, 0,
@@ -344,7 +352,7 @@ static void *xdp_receiver_thread(void *data)
 
             /* Busy busy... */
             while (23) {
-                received = xsk_ring_cons__peek(&xdp_socket.rx, 1, &idx_rx);
+                received = xsk_ring_cons__peek(&xdp_socket.rx, BATCH_SIZE, &idx_rx);
 
                 if (!received)
                     if (xsk_ring_prod__needs_wakeup(&xdp_socket.umem.fq))
@@ -365,32 +373,12 @@ static void *xdp_receiver_thread(void *data)
             return NULL;
         }
 
-        if (received != 1) {
-            log_err("Received more packets than expected!");
-            continue;
-        }
+        /* One packet per cycle is expected. */
+        if (received != 1)
+            current_stats.cycle_mismatch++;
 
-        /* Get the packet */
-        addr = xsk_ring_cons__rx_desc(&xdp_socket.rx, idx_rx)->addr;
-        len  = xsk_ring_cons__rx_desc(&xdp_socket.rx, idx_rx)->len;
-
-        /* Parse it */
-        buffer = parse_raw_packet(xsk_umem__add_offset_to_addr(addr), len);
-        if (!buffer)
-            continue;
-
-        /* Decode */
-        ret = sscanf(buffer, "KURT: %ld", &tx_time);
-        if (ret != 1) {
-            log_err("Failed to decode package");
-            continue;
-        }
-
-        /* Cleanup */
-        xsk_ring_cons__release(&xdp_socket.rx, received);
-
-        /* Add that particular buffer back to the fill queue */
-        ret = xsk_ring_prod__reserve(&xdp_socket.umem.fq, received, &idx);
+        /* Reserve space in fill queue */
+        ret = xsk_ring_prod__reserve(&xdp_socket.umem.fq, received, &idx_fq);
         while (ret != received) {
             if (ret < 0)
                 err("xsk_ring_prod__reserve() failed");
@@ -398,21 +386,43 @@ static void *xdp_receiver_thread(void *data)
             if (xsk_ring_prod__needs_wakeup(&xdp_socket.umem.fq))
                 recvfrom(xsk_socket__fd(xdp_socket.xsk), NULL, 0,
                          MSG_DONTWAIT, NULL, NULL);
-            ret = xsk_ring_prod__reserve(&xdp_socket.umem.fq, received, &idx);
+            ret = xsk_ring_prod__reserve(&xdp_socket.umem.fq, received, &idx_fq);
         }
 
-        *xsk_ring_prod__fill_addr(&xdp_socket.umem.fq, idx) =
-            xsk_umem__extract_addr(addr);
+        for (i = 0; i < received; ++i) {
+            /* Get the packet */
+            addr = xsk_ring_cons__rx_desc(&xdp_socket.rx, idx_rx)->addr;
+            len  = xsk_ring_cons__rx_desc(&xdp_socket.rx, idx_rx++)->len;
+
+            /* Move buffer back to fill queue */
+            *xsk_ring_prod__fill_addr(&xdp_socket.umem.fq, idx_fq++) =
+                xsk_umem__extract_addr(addr);
+
+            /* Parse it */
+            buffer = parse_raw_packet(xsk_umem__add_offset_to_addr(addr), len);
+            if (!buffer) {
+                current_stats.payload_mismatch++;
+                continue;
+            }
+
+            /* Decode */
+            ret = sscanf(buffer, "KURT: %ld", &tx_time);
+            if (ret != 1) {
+                current_stats.payload_mismatch++;
+                continue;
+            }
+
+            /* Update stats */
+            diff = update_stats(&ts, tx_time);
+            if (break_value_ns && diff > break_value_ns) {
+                stop_tracing();
+                stop = 1;
+                break;
+            }
+        }
 
         xsk_ring_prod__submit(&xdp_socket.umem.fq, received);
-
-        /* Update stats */
-        diff = update_stats(&ts, tx_time);
-        if (break_value_ns && diff > break_value_ns) {
-            stop_tracing();
-            stop = 1;
-            break;
-        }
+        xsk_ring_cons__release(&xdp_socket.rx, received);
     }
 #endif
 
@@ -444,9 +454,9 @@ static void *printer_thread(void *data)
         }
 
         /* Print stats */
-        printf("Packets: %20ld Min: %20ld [ns] Max: %20ld [ns] AVG: %20lf\r",
-               current_stats.packets_received, current_stats.min,
-               current_stats.max,
+        printf("Packets: %10ld CycleErr:%10ld PayloadErr:%10ld Min: %10ld [ns] Max: %10ld [ns] AVG: %10lf\r",
+               current_stats.packets_received, current_stats.cycle_mismatch,
+               current_stats.payload_mismatch, current_stats.min, current_stats.max,
                current_stats.avg / (double)current_stats.packets_received);
         fflush(stdout);
     }
