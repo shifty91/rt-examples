@@ -63,7 +63,7 @@ trace probes:
 ### ETF ###
 
 This example shows how to implement a Time Sensitive Networking (TSN) talker and
-listener using UDP based communication.
+listener using UDP or RAW Ethernet based communication.
 
 ## Dependencies ##
 
@@ -78,7 +78,7 @@ listener using UDP based communication.
 
 ## Author ##
 
-Copyright (C) 2018-2020 Kurt Kanzenbach <kurt@kmk-computers.de>
+Copyright (C) 2018-2021 Kurt Kanzenbach <kurt@kmk-computers.de>
 
 ## License ##
 
