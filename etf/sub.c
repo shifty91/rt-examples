@@ -326,7 +326,7 @@ static void *xdp_receiver_thread(void *data)
          *  2. Do a mixture between active and passing waiting...
          */
         if (!base_time_ns) {
-            ret = poll(fds, 1, -1);
+            ret = poll(fds, 1, 1000);
             if (ret == 0)
                 continue;
             if (ret < 0)
@@ -444,10 +444,8 @@ static void *printer_thread(void *data)
 
         /* Sleep until next period */
         time.tv_sec++;
-        do {
-            ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &time, NULL);
-        } while (ret == EINTR);
-        if (ret && ret != EINTR) {
+        ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &time, NULL);
+        if (ret) {
             errno = ret;
             log_err_errno("clock_nanosleep() failed");
             return NULL;
