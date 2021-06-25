@@ -202,7 +202,7 @@ static int send_packet(int64_t tx_time_ns)
         len -= sizeof(*eth);
     }
 
-    len -= snprintf(p, len, "KURT: %ld", tx_time_ns);
+    len -= snprintf(p, len, "KURT: %lld", (long long int)tx_time_ns);
 
     iov.iov_base = payload;
     iov.iov_len  = sizeof(payload) - len;
@@ -370,9 +370,10 @@ static void *printer_thread(void *data)
         }
 
         /* Print stats */
-        printf("Packets: %20ld Missed: %20ld Invalid: %20ld\r",
-               current_stats.packets_sent, current_stats.missed_deadline,
-               current_stats.invalid_parameter);
+        printf("Packets: %20lld Missed: %20lld Invalid: %20lld\r",
+               (long long int)current_stats.packets_sent,
+               (long long int)current_stats.missed_deadline,
+               (long long int)current_stats.invalid_parameter);
         fflush(stdout);
     }
 
@@ -407,13 +408,13 @@ static void print_parameter(void)
     printf("------------------------------------------\n");
     printf("Host:            %s\n", host);
     printf("Port:            %s\n", port);
-    printf("Base Time:       %ld [ns]\n", base_time_ns);
-    printf("Interval:        %ld [ns]\n", interval_ns);
+    printf("Base Time:       %lld [ns]\n", (long long int)base_time_ns);
+    printf("Interval:        %lld [ns]\n", (long long int)interval_ns);
     printf("Priority:        %d\n", priority);
     printf("Socket Priority: %d\n", socket_priority);
     printf("CPU:             %d\n", cpu);
-    printf("Wakeup Time:     %ld [ns]\n", wakeup_time_ns);
-    printf("Max. Packets:    %ld\n", max_packets);
+    printf("Wakeup Time:     %lld [ns]\n", (long long int)wakeup_time_ns);
+    printf("Max. Packets:    %lld\n", (long long int)max_packets);
     printf("RAW:             %s\n", raw ? "RAW" : "UDP");
     printf("Interface:       %s\n", interface);
     printf("------------------------------------------\n");

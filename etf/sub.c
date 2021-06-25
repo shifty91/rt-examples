@@ -242,7 +242,7 @@ static void *receiver_thread(void *data)
             p += sizeof(struct ethhdr);
         }
 
-        ret = sscanf(p, "KURT: %ld", &tx_time);
+        ret = sscanf(p, "KURT: %lld", (long long int *)&tx_time);
         if (ret != 1) {
             current_stats.payload_mismatch++;
             continue;
@@ -406,7 +406,7 @@ static void *xdp_receiver_thread(void *data)
             }
 
             /* Decode */
-            ret = sscanf(buffer, "KURT: %ld", &tx_time);
+            ret = sscanf(buffer, "KURT: %lld", (long long int *)&tx_time);
             if (ret != 1) {
                 current_stats.payload_mismatch++;
                 continue;
@@ -452,10 +452,13 @@ static void *printer_thread(void *data)
         }
 
         /* Print stats */
-        printf("Packets: %10ld CycleErr:%10ld PayloadErr:%10ld Min: %10ld [ns] Max: %10ld [ns] AVG: %10lf\r",
-               current_stats.packets_received, current_stats.cycle_mismatch,
-               current_stats.payload_mismatch, current_stats.min, current_stats.max,
-               current_stats.avg / (double)current_stats.packets_received);
+        printf("Packets: %10lld CycleErr:%10lld PayloadErr:%10lld Min: %10lld [ns] Max: %10lld [ns] AVG: %10lf\r",
+               (long long int)current_stats.packets_received,
+               (long long int)current_stats.cycle_mismatch,
+               (long long int)current_stats.payload_mismatch,
+               (long long int)current_stats.min,
+               (long long int)current_stats.max,
+               (long long int)current_stats.avg / (double)current_stats.packets_received);
         fflush(stdout);
     }
 
@@ -491,10 +494,10 @@ static void print_parameter(void)
     printf("RAW:         %s\n", raw ? "RAW" : "UDP");
     printf("SKB Mode:    %s\n", skb_mode ? "Yes" : "No");
     printf("Queue:       %d\n", queue);
-    printf("Break:       %ld [ns]\n", break_value_ns);
-    printf("Base Time:   %ld [ns]\n", base_time_ns);
-    printf("Wakeup Time: %ld [ns]\n", wakeup_time_ns);
-    printf("Interval:    %ld [ns]\n", interval_ns);
+    printf("Break:       %lld [ns]\n", (long long int)break_value_ns);
+    printf("Base Time:   %lld [ns]\n", (long long int)base_time_ns);
+    printf("Wakeup Time: %lld [ns]\n", (long long int)wakeup_time_ns);
+    printf("Interval:    %lld [ns]\n", (long long int)interval_ns);
     printf("------------------------------------------\n");
 }
 

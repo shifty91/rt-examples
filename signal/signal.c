@@ -41,11 +41,11 @@ static void *printer_thread(void *data)
         pthread_mutex_lock(&lock);
         pthread_cond_wait(&cond_signal, &lock);
         pthread_mutex_unlock(&lock);
-        printf("Max latency: %05ld\r", max_latency / 1000);
+        printf("Max latency: %05lld\r", (long long int)max_latency / 1000);
         fflush(stdout);
     }
     printf("                                                 \r");
-    printf("Max latency: %05ld\n", max_latency / 1000);
+    printf("Max latency: %05lld\n", (long long int)max_latency / 1000);
 
     return NULL;
 }
