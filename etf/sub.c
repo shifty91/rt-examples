@@ -60,7 +60,7 @@ static struct option long_options[] = {
     { "break_value", optional_argument, NULL, 'B' }, /* default: 0 */
     { "base_time",   optional_argument, NULL, 'b' }, /* default: 0 */
     { "wakeup_time", optional_argument, NULL, 'w' }, /* default: 500us */
-    { "intervall",   optional_argument, NULL, 'I' }, /* default: 0 */
+    { "interval",    optional_argument, NULL, 'I' }, /* default: 0 */
     { "help",        no_argument,       NULL, 'h' },
     { NULL },
 };
@@ -78,7 +78,7 @@ static int queue;
 static int64_t break_value_ns;
 static int64_t base_time_ns;
 static int64_t wakeup_time_ns;
-static int64_t intervall_ns;
+static int64_t interval_ns;
 
 /* gobal */
 static volatile int stop;
@@ -363,7 +363,7 @@ static void *xdp_receiver_thread(void *data)
                     break;
             }
 
-            increment_period(&wakeup_time, intervall_ns);
+            increment_period(&wakeup_time, interval_ns);
         }
 
         /* Get current time */
@@ -476,7 +476,7 @@ static void set_default_parameter(void)
     break_value_ns = 0;
     base_time_ns   = 0;
     wakeup_time_ns = 500000;
-    intervall_ns   = 0;
+    interval_ns    = 0;
 }
 
 static void print_parameter(void)
@@ -494,7 +494,7 @@ static void print_parameter(void)
     printf("Break:       %ld [ns]\n", break_value_ns);
     printf("Base Time:   %ld [ns]\n", base_time_ns);
     printf("Wakeup Time: %ld [ns]\n", wakeup_time_ns);
-    printf("Intervall:   %ld [ns]\n", intervall_ns);
+    printf("Interval:    %ld [ns]\n", interval_ns);
     printf("------------------------------------------\n");
 }
 
@@ -513,7 +513,7 @@ static void print_usage_and_die(void)
     fprintf(stderr, "  -B,--break_value: Max difference where to stop tracing\n");
     fprintf(stderr, "  -b,--base_time:   Start time for ETF publisher\n");
     fprintf(stderr, "  -w,--wakeup_time: Time to start polling before base time\n");
-    fprintf(stderr, "  -I,--intervall:   Period of ETF publisher\n");
+    fprintf(stderr, "  -I,--interval:    Period of ETF publisher\n");
 
     exit(EXIT_SUCCESS);
 }
@@ -700,7 +700,7 @@ int main(int argc, char *argv[])
             wakeup_time_ns = atoll(optarg);
             break;
         case 'I':
-            intervall_ns = atoll(optarg);
+            interval_ns = atoll(optarg);
             break;
         default:
             print_usage_and_die();

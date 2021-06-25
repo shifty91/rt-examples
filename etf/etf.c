@@ -44,7 +44,7 @@ static struct option long_options[] = {
     { "host",        optional_argument, NULL, 'H' }, /* default: localhost */
     { "port",        optional_argument, NULL, 'P' }, /* default: 6666 */
     { "base",        optional_argument, NULL, 'b' }, /* default: now + 1m */
-    { "intervall",   optional_argument, NULL, 'I' }, /* default: 1ms */
+    { "interval",    optional_argument, NULL, 'I' }, /* default: 1ms */
     { "priority",    optional_argument, NULL, 'p' }, /* default: 99 */
     { "socket",      optional_argument, NULL, 's' }, /* default: 3 */
     { "cpu",         optional_argument, NULL, 'c' }, /* default: cpu 0 */
@@ -60,7 +60,7 @@ static struct option long_options[] = {
 static const char *host;
 static const char *port;
 static int64_t base_time_ns;
-static int64_t intervall_ns;
+static int64_t interval_ns;
 static int priority;
 static int socket_priority;
 static int cpu;
@@ -319,8 +319,8 @@ static void *cyclic_thread(void *data)
             return NULL;
 
         /* Sleep until next period */
-        tx_time += intervall_ns;
-        increment_period(&wakeup_time, intervall_ns);
+        tx_time += interval_ns;
+        increment_period(&wakeup_time, interval_ns);
 
         if (max_packets && max_packets == current_stats.packets_sent)
             stop = 1;
@@ -392,7 +392,7 @@ static void set_default_parameter(void)
     ts.tv_sec += 1 * 60;
     base_time_ns = ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec;
 
-    intervall_ns    = 1000000;
+    interval_ns     = 1000000;
     priority        = 99;
     socket_priority = 4;
     cpu             = 0;
@@ -408,7 +408,7 @@ static void print_parameter(void)
     printf("Host:            %s\n", host);
     printf("Port:            %s\n", port);
     printf("Base Time:       %ld [ns]\n", base_time_ns);
-    printf("Intervall:       %ld [ns]\n", intervall_ns);
+    printf("Interval:        %ld [ns]\n", interval_ns);
     printf("Priority:        %d\n", priority);
     printf("Socket Priority: %d\n", socket_priority);
     printf("CPU:             %d\n", cpu);
@@ -425,7 +425,7 @@ static void print_usage_and_die(void)
     fprintf(stderr, "  -H,--host:        Remote host or destination MAC address in case of raw\n");
     fprintf(stderr, "  -P,--port:        Remote port\n");
     fprintf(stderr, "  -b,--base:        When to start in ns in reference to CLOCK_TAI\n");
-    fprintf(stderr, "  -I,--intervall:   Period in ns\n");
+    fprintf(stderr, "  -I,--interval:    Period in ns\n");
     fprintf(stderr, "  -p,--priority:    Thread priority\n");
     fprintf(stderr, "  -s,--socket:      Socket priority\n");
     fprintf(stderr, "  -c,--cpu:         CPU to run on\n");
@@ -483,7 +483,7 @@ int main(int argc, char *argv[])
             base_time_ns = atoll(optarg);
             break;
         case 'I':
-            intervall_ns = atoll(optarg);
+            interval_ns = atoll(optarg);
             break;
         case 'p':
             priority = atoi(optarg);
@@ -510,7 +510,7 @@ int main(int argc, char *argv[])
             print_usage_and_die();
         }
     }
-    if (base_time_ns < 0 || intervall_ns < 0 || priority < 0 ||
+    if (base_time_ns < 0 || interval_ns < 0 || priority < 0 ||
         socket_priority < 0 || cpu < 0 || wakeup_time_ns < 0 ||
         max_packets < 0)
         print_usage_and_die();
