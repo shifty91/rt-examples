@@ -7,6 +7,7 @@
 #include <linux/types.h>
 
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
 #include "etf.h"
 
@@ -22,22 +23,37 @@ int xdp_sock_prog(struct xdp_md *ctx)
 {
     void *data_end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
-    struct ethhdr *eth = data;
     int idx = ctx->rx_queue_index;
-    unsigned long long nh_off;
+    struct ethhdr *eth;
+    void *p = data;
+    __be16 proto;
 
-    nh_off = sizeof(*eth);
-    if (data + nh_off > data_end)
+    eth = p;
+    if ((void *)(eth + 1) > data_end)
         return XDP_PASS;
 
-    if (eth->h_proto != __builtin_bswap16(ETH_P_ETF))
+    /* Check for VLAN frames */
+    if (eth->h_proto == bpf_htons(ETH_P_8021Q)) {
+        struct vlan_ethhdr *veth = p;
+
+        if ((void *)(veth + 1) > data_end)
+            return XDP_PASS;
+
+        proto = veth->h_vlan_encapsulated_proto;
+        p += sizeof(*veth);
+    } else {
+        proto = eth->h_proto;
+        p += sizeof(*eth);
+    }
+
+    /* Check for valid ETF frames */
+    if (proto != bpf_htons(ETH_P_ETF))
         return XDP_PASS;
 
     /* If socket bound to rx_queue than redirect to user space */
     if (bpf_map_lookup_elem(&xsks_map, &idx))
         return bpf_redirect_map(&xsks_map, idx, 0);
 
-    /* Else pass to Linux' network stack */
     return XDP_PASS;
 }
 

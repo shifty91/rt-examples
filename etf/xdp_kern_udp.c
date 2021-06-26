@@ -4,6 +4,7 @@
 #include <linux/if_link.h>
 #include <linux/if_xdp.h>
 #include <linux/if_ether.h>
+#include <linux/if_vlan.h>
 #include <linux/udp.h>
 #include <linux/ip.h>
 #include <linux/in.h>
@@ -30,17 +31,34 @@ int xdp_sock_prog(struct xdp_md *ctx)
     struct ethhdr *eth;
     struct udphdr *udp;
     struct iphdr *ip;
+    void *p = data;
+    __be16 proto;
 
-    eth = data;
+    eth = p;
     if ((void *)(eth + 1) > data_end)
         return XDP_PASS;
 
-    /* Check for IP or IPv6 frames */
-    if (eth->h_proto != bpf_htons(ETH_P_IP) &&
-        eth->h_proto != bpf_htons(ETH_P_IPV6))
+    /* Check for VLAN frames */
+    if (eth->h_proto == bpf_htons(ETH_P_8021Q)) {
+        struct vlan_ethhdr *veth = p;
+
+        if ((void *)(veth + 1) > data_end)
+            return XDP_PASS;
+
+        proto = veth->h_vlan_encapsulated_proto;
+        p += sizeof(*veth);
+    } else {
+        proto = eth->h_proto;
+        p += sizeof(*eth);
+    }
+
+    /* Check for valid IP or IPv6 frames */
+    if (proto != bpf_htons(ETH_P_IP) &&
+        proto != bpf_htons(ETH_P_IPV6))
         return XDP_PASS;
 
-    ip = data + sizeof(*eth);
+    ip = p;
+    p += sizeof(*ip);
     if ((void *)(ip + 1) > data_end)
         return XDP_PASS;
 
@@ -48,7 +66,8 @@ int xdp_sock_prog(struct xdp_md *ctx)
     if (ip->protocol != IPPROTO_UDP)
         return XDP_PASS;
 
-    udp = data + sizeof(*eth) + sizeof(*ip);
+    udp = p;
+    p += sizeof(*udp);
     if ((void *)(udp + 1) > data_end)
         return XDP_PASS;
 
