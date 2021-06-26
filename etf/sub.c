@@ -468,7 +468,7 @@ static void *printer_thread(void *data)
 static void set_default_parameter(void)
 {
     host           = "localhost";
-    port           = "6666";
+    port           = XSTR(ETF_DEFAULT_UDP_PORT);
     interface      = "eth0";
     priority       = 99;
     cpu            = 0;
@@ -717,6 +717,9 @@ int main(int argc, char *argv[])
     if (xdp)
         err("No XDP support compiled in. Cannot use it.");
 #endif
+
+    if (xdp && strcmp(port, XSTR(ETF_DEFAULT_UDP_PORT)))
+        err("XDP only works with the default UDP port!");
 
     print_parameter();
 

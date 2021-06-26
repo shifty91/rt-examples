@@ -10,6 +10,9 @@
 #include <linux/types.h>
 
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
+
+#include "etf.h"
 
 struct bpf_map_def SEC("maps") xsks_map = {
     .type        = BPF_MAP_TYPE_XSKMAP,
@@ -18,45 +21,45 @@ struct bpf_map_def SEC("maps") xsks_map = {
     .max_entries = 64,
 };
 
-static inline int parse_ipv4(void *data, unsigned long long nh_off,
-                             void *data_end)
-{
-    struct iphdr *iph = data + nh_off;
-
-    if ((void *)(iph + 1) > data_end)
-        return 0;
-
-    return iph->protocol;
-}
-
 SEC("xdp_sock")
 int xdp_sock_prog(struct xdp_md *ctx)
 {
     void *data_end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
-    struct ethhdr *eth = data;
     int idx = ctx->rx_queue_index;
-    unsigned int ipproto = 0;
-    unsigned long long nh_off;
+    struct ethhdr *eth;
+    struct udphdr *udp;
+    struct iphdr *ip;
 
-    /* Check if it's a UDP frame: If UDP -> Redirect to active xsk for user
-     * space. If not -> pass to stack.
-     */
-    nh_off = sizeof(*eth);
-    if (data + nh_off > data_end)
+    eth = data;
+    if ((void *)(eth + 1) > data_end)
         return XDP_PASS;
 
-    if (eth->h_proto == __builtin_bswap16(ETH_P_IP))
-        ipproto = parse_ipv4(data, nh_off, data_end);
+    /* Check for IP or IPv6 frames */
+    if (eth->h_proto != bpf_htons(ETH_P_IP) &&
+        eth->h_proto != bpf_htons(ETH_P_IPV6))
+        return XDP_PASS;
 
-    if (ipproto != IPPROTO_UDP)
+    ip = data + sizeof(*eth);
+    if ((void *)(ip + 1) > data_end)
+        return XDP_PASS;
+
+    /* Check for UDP */
+    if (ip->protocol != IPPROTO_UDP)
+        return XDP_PASS;
+
+    udp = data + sizeof(*eth) + sizeof(*ip);
+    if ((void *)(udp + 1) > data_end)
+        return XDP_PASS;
+
+    /* Check for correct UDP port */
+    if (udp->dest != bpf_htons(ETF_DEFAULT_UDP_PORT))
         return XDP_PASS;
 
     /* If socket bound to rx_queue than redirect to user space */
     if (bpf_map_lookup_elem(&xsks_map, &idx))
         return bpf_redirect_map(&xsks_map, idx, 0);
 
-    /* Else pass to Linux' network stack */
     return XDP_PASS;
 }
 

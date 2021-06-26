@@ -5,6 +5,9 @@
 #ifndef _ETF_H_
 #define _ETF_H_
 
-#define ETH_P_ETF	(0x4242)
+#define STR(x)					#x
+#define XSTR(x)					STR(x)
+#define ETH_P_ETF				0x4242
+#define ETF_DEFAULT_UDP_PORT	6666
 
 #endif /* _ETF_H_ */
