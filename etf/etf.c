@@ -390,7 +390,7 @@ static void set_default_parameter(void)
     if (clock_gettime(CLOCK_TAI, &ts))
         err_errno("clock_gettime() failed");
 
-    ts.tv_sec += 1 * 60;
+    ts.tv_sec += 1;
     base_time_ns = ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec;
 
     interval_ns     = 1000000;
